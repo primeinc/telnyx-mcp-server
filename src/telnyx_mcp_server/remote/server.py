@@ -686,6 +686,74 @@ async def mcp_oauth_metadata(request: Request):
     }
 
 
+@app.get("/.well-known/openid-configuration")
+async def openid_configuration(request: Request):
+    """OpenID Connect Discovery endpoint."""
+    # Get base URL from request, handling proxy headers
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()
+    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    
+    if forwarded_proto and forwarded_host:
+        # Running behind a proxy (like Azure App Service)
+        base_url = f"{forwarded_proto}://{forwarded_host}"
+    else:
+        # Direct access
+        base_url = str(request.base_url).rstrip('/')
+    
+    return {
+        "issuer": base_url,
+        "authorization_endpoint": f"{base_url}/authorize",
+        "token_endpoint": f"{base_url}/token",
+        "jwks_uri": f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/discovery/v2.0/keys",
+        "response_types_supported": ["code"],
+        "grant_types_supported": ["authorization_code"],
+        "subject_types_supported": ["public"],
+        "id_token_signing_alg_values_supported": ["RS256"],
+        "scopes_supported": ["openid", "profile", "email"],
+        "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic"],
+        "code_challenge_methods_supported": ["S256"],
+        "claims_supported": ["sub", "email", "name", "exp", "iat"]
+    }
+
+
+@app.get("/.well-known/mcp-metadata")
+async def mcp_metadata(request: Request):
+    """MCP Metadata endpoint for Claude Desktop discovery."""
+    # Get base URL from request, handling proxy headers
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()
+    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    
+    if forwarded_proto and forwarded_host:
+        # Running behind a proxy (like Azure App Service)
+        base_url = f"{forwarded_proto}://{forwarded_host}"
+    else:
+        # Direct access
+        base_url = str(request.base_url).rstrip('/')
+    
+    return {
+        "mcpVersion": "2025-03-26",
+        "serverInfo": {
+            "name": "Telnyx MCP Server",
+            "version": __version__
+        },
+        "auth": {
+            "type": "oauth2",
+            "oauth2": {
+                "authorizationEndpoint": f"{base_url}/authorize",
+                "tokenEndpoint": f"{base_url}/token",
+                "scopes": ["openid", "profile", "email"],
+                "pkce": True
+            }
+        },
+        "capabilities": {
+            "tools": True,
+            "resources": True,
+            "prompts": False,
+            "logging": True
+        }
+    }
+
+
 # OAuth 2.0 endpoints (simplified for MCP)
 @app.get("/authorize")
 async def authorize(
