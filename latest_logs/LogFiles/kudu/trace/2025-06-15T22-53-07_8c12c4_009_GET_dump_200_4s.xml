@@ -2,3 +2,5 @@
   <step title="Cleanup Xml Logs" date="2025-06-15T22:53:07.294" >
     <step title="Cleanup Infos" date="2025-06-15T22:53:07.307" totalFiles="511" totalCleanup="351" /><!-- duration: 3ms -->
   </step><!-- duration: 19ms -->
+  <step title="Outgoing response" date="2025-06-15T22:53:10.978" type="response" statusCode="200" statusText="OK" /><!-- duration: 8ms -->
+</step><!-- duration: 3703ms -->

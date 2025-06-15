@@ -3,3 +3,6 @@
     <step title="Cleanup Infos" date="2025-06-15T22:52:42.494" totalFiles="510" totalCleanup="350" /><!-- duration: 6ms -->
   </step><!-- duration: 32ms -->
   <step title="LogStreamHandlerMiddleware.Invoke" date="2025-06-15T22:52:42.507" /><!-- duration: 340ms -->
+  <step title="Error occurred" date="2025-06-15T22:53:42.845" type="error" text="LogStreamManager: ProcessRequest end" /><!-- duration: 3ms -->
+  <step title="Outgoing response" date="2025-06-15T22:53:42.855" type="response" statusCode="200" statusText="OK" /><!-- duration: 2ms -->
+</step><!-- duration: 60391ms -->

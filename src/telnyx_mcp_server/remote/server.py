@@ -1093,7 +1093,7 @@ async def mcp_endpoint(
                         base_url = str(request.base_url).rstrip('/')
                     
                     headers = {
-                        "WWW-Authenticate": f'Bearer realm="{base_url}", resource_metadata="{base_url}/.well-known/oauth-protected-resource"'
+                        "WWW-Authenticate": f'Bearer realm="{base_url}", authorization_uri="{base_url}/.well-known/mcp-oauth-metadata"'
                     }
                     return Response(
                         content=json.dumps({
