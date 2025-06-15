@@ -460,14 +460,14 @@ async def token(request: Request):
         )
 
 
-@app.get("/callback")
+@app.get("/auth/callback")
 async def oauth_callback(
     code: Optional[str] = None,
     state: Optional[str] = None,
     error: Optional[str] = None,
     error_description: Optional[str] = None
 ):
-    """OAuth 2.0 callback endpoint."""
+    """OAuth 2.0 callback endpoint - matches Azure AD redirect URI."""
     if error:
         return Response(
             content=json.dumps({
@@ -488,11 +488,11 @@ async def oauth_callback(
             media_type="application/json"
         )
     
-    # Client should exchange this code for a token
+    # Return code for client to exchange
     return {
         "code": code,
         "state": state,
-        "message": "Exchange this code at /token endpoint"
+        "message": "Authorization successful. Exchange this code at /token endpoint."
     }
 
 
