@@ -17,6 +17,8 @@ This guide explains how to integrate the Telnyx Remote MCP Server with Claude.ai
 
 ## Configuring Claude.ai
 
+**Important**: Claude.ai does NOT handle OAuth flows automatically. You must obtain a JWT token first and provide it in the configuration.
+
 When using Claude.ai with the MCP connector feature, you'll need to provide the following configuration:
 
 ```json
@@ -24,13 +26,18 @@ When using Claude.ai with the MCP connector feature, you'll need to provide the 
   "mcp_servers": [
     {
       "type": "url",
-      "url": "https://YOUR-APP.azurewebsites.net/mcp",
+      "url": "https://YOUR-APP.azurewebsites.net/mcp/stream",
       "name": "telnyx",
-      "authorization_token": "YOUR_JWT_TOKEN_HERE"
+      "authorization_token": "Bearer YOUR_JWT_TOKEN_HERE"
     }
   ]
 }
 ```
+
+**Note**: 
+- Use `/mcp/stream` endpoint (not `/mcp`)
+- Include "Bearer " prefix with your token
+- Token must be obtained manually via the test page
 
 Replace:
 - `YOUR-APP` with your actual Azure app name (e.g., `app-web-3ky2b33hy2dpm`)
@@ -85,8 +92,12 @@ JWT tokens expire after 24 hours by default. When your token expires:
 - Check if the token has expired (24 hours)
 - Verify the token includes "Bearer " prefix if required
 
+### "Failed to discover OAuth metadata" error
+- This is expected - Claude.ai looks for OAuth metadata but we use pre-obtained tokens
+- Simply provide your JWT token in the configuration as shown above
+
 ### "Method not found" error
-- Ensure you're using the `/mcp` endpoint (not `/mcp/stream` or `/sse`)
+- Ensure you're using the `/mcp/stream` endpoint
 - Verify the server is running and accessible
 
 ### No tools showing up

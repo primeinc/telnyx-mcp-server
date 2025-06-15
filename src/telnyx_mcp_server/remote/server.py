@@ -1,26 +1,30 @@
 """Remote MCP server implementation for Telnyx using FastAPI."""
 
-from fastapi import FastAPI, HTTPException, Request, Depends, status
+from fastapi import FastAPI, HTTPException, Request, Depends, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 from sse_starlette.sse import EventSourceResponse
-from pydantic import BaseModel
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional, List, Union
 import logging
 import os
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 import json
 import asyncio
+from datetime import datetime
+import httpx
 
 # Import authentication
-from .auth import AuthService, get_current_user, optional_auth
+from .auth import (
+    AuthService, get_current_user, optional_auth,
+    AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_REDIRECT_URI, AZURE_TENANT_ID,
+    AZURE_TOKEN_URL
+)
 
 # Import existing Telnyx MCP components
 from ..mcp import mcp
 from ..config import settings
 from ..utils.logger import get_logger
-from mcp.types import Tool as MCPTool
 
 # Load environment variables
 load_dotenv()
@@ -29,20 +33,8 @@ load_dotenv()
 logger = get_logger(__name__)
 
 # Version information
-__version__ = "0.2.0"  # Increment this when deploying changes
-DEPLOYMENT_TIMESTAMP = os.getenv("DEPLOYMENT_TIMESTAMP", "local-dev")
-
-# Pydantic Models for MCP protocol
-class Tool(BaseModel):
-    name: str
-    description: str
-    inputSchema: Dict[str, Any]
-
-class Resource(BaseModel):
-    uri: str
-    name: str
-    description: Optional[str] = None
-    mimeType: Optional[str] = None
+__version__ = "0.3.0"
+PROTOCOL_VERSION = "2025-03-26"
 
 
 class TelnyxMCPServer:
@@ -50,9 +42,10 @@ class TelnyxMCPServer:
     
     def __init__(self):
         """Initialize the MCP server with Telnyx tools."""
-        self.tools: Dict[str, Tool] = {}
-        self.resources: Dict[str, Resource] = {}
+        self.tools = {}
+        self.resources = {}
         self._tools_initialized = False
+        self._initialized_sessions = set()  # Track initialized sessions
     
     async def initialize_tools(self):
         """Initialize tools from MCP instance if not already done."""
@@ -77,63 +70,90 @@ class TelnyxMCPServer:
             # Get the list of tools from MCP
             tools_list = await mcp.list_tools()
             
-            # Convert to our Tool format
-            for tool_def in tools_list:
-                # MCPTool has attributes: name, description, inputSchema
-                self.tools[tool_def.name] = Tool(
-                    name=tool_def.name,
-                    description=tool_def.description or "",
-                    inputSchema=tool_def.inputSchema
-                )
+            # Convert to dict format
+            self.tools = {
+                tool.name: {
+                    "name": tool.name,
+                    "description": tool.description or "",
+                    "inputSchema": tool.inputSchema
+                }
+                for tool in tools_list
+            }
             
             self._tools_initialized = True
             logger.info(f"Initialized {len(self.tools)} Telnyx tools")
             
-            # Log the available tools for debugging
-            if self.tools:
-                logger.info(f"Available tools: {', '.join(self.tools.keys())}")
-            
         except Exception as e:
             logger.error(f"Failed to initialize tools: {e}", exc_info=True)
-            # Don't mark as initialized on failure
             self._tools_initialized = False
     
-    async def handle_initialize(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def handle_initialize(self, request_id: Any, params: Dict[str, Any], session_id: str = None) -> Dict[str, Any]:
         """Handle MCP initialize request."""
+        # Get client's requested protocol version
+        client_version = params.get("protocolVersion", PROTOCOL_VERSION)
+        
+        # Version negotiation - we support 2025-03-26
+        response_version = PROTOCOL_VERSION if client_version == PROTOCOL_VERSION else client_version
+        
+        # Mark session as initialized
+        if session_id:
+            self._initialized_sessions.add(session_id)
+        
         return {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {
-                "tools": {
-                    "listChanged": True
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": {
+                "protocolVersion": response_version,
+                "capabilities": {
+                    "tools": {
+                        "listChanged": True
+                    },
+                    "resources": {
+                        "subscribe": True,
+                        "listChanged": True
+                    },
+                    "logging": {}
                 },
-                "resources": {
-                    "subscribe": True,
-                    "listChanged": True
+                "serverInfo": {
+                    "name": "Telnyx MCP Server",
+                    "version": __version__
                 }
-            },
-            "serverInfo": {
-                "name": "Telnyx MCP Server",
-                "version": "1.0.0"
             }
         }
     
-    async def handle_tools_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle tools/list request."""
-        # Ensure tools are initialized
-        await self.initialize_tools()
-        tools_list = [tool.dict() for tool in self.tools.values()]
-        return {"tools": tools_list}
+    async def handle_initialized(self, params: Dict[str, Any]) -> None:
+        """Handle initialized notification from client."""
+        # Client has confirmed initialization
+        logger.info("Client confirmed initialization")
     
-    async def handle_tools_call(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle tools/call request by delegating to the existing MCP implementation."""
-        # Ensure tools are initialized
+    async def handle_tools_list(self, request_id: Any) -> Dict[str, Any]:
+        """Handle tools/list request."""
+        await self.initialize_tools()
+        
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": {
+                "tools": list(self.tools.values())
+            }
+        }
+    
+    async def handle_tools_call(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle tools/call request."""
         await self.initialize_tools()
         
         tool_name = params.get("name")
         arguments = params.get("arguments", {})
         
         if tool_name not in self.tools:
-            raise HTTPException(status_code=400, detail=f"Tool '{tool_name}' not found")
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {
+                    "code": -32602,
+                    "message": f"Tool '{tool_name}' not found"
+                }
+            }
         
         try:
             # Call the tool through the existing MCP instance
@@ -147,30 +167,123 @@ class TelnyxMCPServer:
             else:
                 content = [{"type": "text", "text": str(result)}]
             
-            return {"content": content}
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "content": content
+                }
+            }
             
         except Exception as e:
             logger.error(f"Tool execution error: {e}")
             return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": f"Error executing tool: {str(e)}"
-                    }
-                ]
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {
+                    "code": -32603,
+                    "message": "Internal error",
+                    "data": str(e)
+                }
             }
     
-    async def handle_resources_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def handle_resources_list(self, request_id: Any) -> Dict[str, Any]:
         """Handle resources/list request."""
-        resources_list = [resource.dict() for resource in self.resources.values()]
-        return {"resources": resources_list}
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": {
+                "resources": list(self.resources.values())
+            }
+        }
     
-    async def handle_resources_read(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def handle_resources_read(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle resources/read request."""
         uri = params.get("uri")
         
-        # For now, return empty resources
-        raise HTTPException(status_code=404, detail=f"Resource '{uri}' not found")
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "error": {
+                "code": -32602,
+                "message": f"Resource '{uri}' not found"
+            }
+        }
+    
+    async def process_message(self, message: Union[Dict, List], session_id: str = None) -> Union[Dict, List]:
+        """Process a JSON-RPC message or batch."""
+        if isinstance(message, list):
+            # Batch request
+            responses = []
+            for msg in message:
+                if msg.get("jsonrpc") == "2.0":
+                    response = await self._process_single_message(msg, session_id)
+                    if response:  # Only include responses for requests, not notifications
+                        responses.append(response)
+            return responses if responses else None
+        else:
+            # Single request
+            return await self._process_single_message(message, session_id)
+    
+    async def _process_single_message(self, message: Dict[str, Any], session_id: str = None) -> Optional[Dict[str, Any]]:
+        """Process a single JSON-RPC message."""
+        if message.get("jsonrpc") != "2.0":
+            return {
+                "jsonrpc": "2.0",
+                "id": message.get("id"),
+                "error": {
+                    "code": -32600,
+                    "message": "Invalid Request - must be JSON-RPC 2.0"
+                }
+            }
+        
+        method = message.get("method")
+        params = message.get("params", {})
+        msg_id = message.get("id")
+        
+        # Notifications don't have id and don't get responses
+        is_notification = msg_id is None
+        
+        try:
+            # Route to appropriate handler
+            if method == "initialize":
+                response = await self.handle_initialize(msg_id, params, session_id)
+            elif method == "notifications/initialized":
+                await self.handle_initialized(params)
+                return None  # No response for notifications
+            elif method == "tools/list":
+                response = await self.handle_tools_list(msg_id)
+            elif method == "tools/call":
+                response = await self.handle_tools_call(msg_id, params)
+            elif method == "resources/list":
+                response = await self.handle_resources_list(msg_id)
+            elif method == "resources/read":
+                response = await self.handle_resources_read(msg_id, params)
+            else:
+                response = {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "error": {
+                        "code": -32601,
+                        "message": f"Method not found: {method}"
+                    }
+                }
+            
+            return response if not is_notification else None
+            
+        except Exception as e:
+            logger.error(f"Error processing message: {e}", exc_info=True)
+            if not is_notification:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "error": {
+                        "code": -32603,
+                        "message": "Internal error",
+                        "data": str(e)
+                    }
+                }
+            return None
 
 
 # Initialize MCP server
@@ -181,7 +294,6 @@ telnyx_mcp_server = TelnyxMCPServer()
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     logger.info("Starting Telnyx Remote MCP Server")
-    # Initialize tools asynchronously
     await telnyx_mcp_server.initialize_tools()
     yield
     logger.info("Shutting down Telnyx Remote MCP Server")
@@ -190,15 +302,15 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="Telnyx Remote MCP Server",
-    description="Remote Model Context Protocol server for Telnyx API integration with OAuth authentication",
-    version="1.0.0",
+    description="Model Context Protocol server for Telnyx API integration",
+    version=__version__,
     lifespan=lifespan
 )
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -208,28 +320,16 @@ app.add_middleware(
 @app.get("/")
 async def root():
     """Root endpoint with server information."""
-    redirect_uri = os.getenv("AZURE_REDIRECT_URI", "http://localhost:8000/auth/callback")
+    base_url = os.getenv("BASE_URL", "https://app-web-3ky2b33hy2dpm.azurewebsites.net")
     return {
         "name": "Telnyx Remote MCP Server",
         "version": __version__,
-        "deployment_timestamp": DEPLOYMENT_TIMESTAMP,
+        "protocol_version": PROTOCOL_VERSION,
         "status": "healthy",
-        "authentication": {
-            "type": "Azure OAuth 2.0",
-            "login_endpoint": "/auth/login",
-            "test_page": "/test-auth",
-            "redirect_uri": redirect_uri,
-            "required_for": ["/mcp", "/mcp/stream", "/tools", "/resources"]
-        },
         "endpoints": {
-            "health": "/health",
-            "login": "/auth/login",
-            "callback": "/auth/callback",
-            "me": "/auth/me",
-            "test": "/test-auth",
             "mcp": "/mcp",
-            "mcp_stream": "/mcp/stream",
-            "docs": "/docs"
+            "oauth_metadata": "/.well-known/oauth-authorization-server",
+            "health": "/health"
         },
         "tools_available": len(telnyx_mcp_server.tools)
     }
@@ -241,493 +341,192 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "telnyx-mcp-server",
-        "mode": "remote",
         "version": __version__,
-        "deployment_timestamp": DEPLOYMENT_TIMESTAMP
+        "protocol_version": PROTOCOL_VERSION
     }
 
 
-# Authentication routes
-@app.get("/auth/login")
-async def login():
-    """Initiate Azure OAuth login."""
-    auth_url = AuthService.get_authorization_url()
+@app.get("/.well-known/oauth-authorization-server")
+async def oauth_metadata(request: Request):
+    """OAuth 2.0 Authorization Server Metadata (RFC8414)."""
+    # Get base URL from request
+    base_url = str(request.base_url).rstrip('/')
+    
+    return {
+        "issuer": base_url,
+        "authorization_endpoint": f"{base_url}/authorize",
+        "token_endpoint": f"{base_url}/token",
+        "registration_endpoint": f"{base_url}/register",
+        "jwks_uri": f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/discovery/v2.0/keys",
+        "response_types_supported": ["code"],
+        "grant_types_supported": ["authorization_code"],
+        "subject_types_supported": ["public"],
+        "id_token_signing_alg_values_supported": ["RS256"],
+        "scopes_supported": ["openid", "profile", "email", "User.Read"],
+        "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic"],
+        "code_challenge_methods_supported": ["S256"],
+        "claims_supported": ["sub", "email", "name", "exp", "iat"],
+        "service_documentation": f"{base_url}/docs"
+    }
+
+
+# OAuth 2.0 endpoints (simplified for MCP)
+@app.get("/authorize")
+async def authorize(
+    client_id: str,
+    redirect_uri: str,
+    response_type: str = "code",
+    scope: str = "openid profile email",
+    state: Optional[str] = None,
+    code_challenge: Optional[str] = None,
+    code_challenge_method: Optional[str] = "S256"
+):
+    """OAuth 2.0 Authorization endpoint - redirects to Azure AD."""
+    # Validate client_id matches our Azure app
+    if client_id != AZURE_CLIENT_ID:
+        return Response(
+            content=f"Invalid client_id. Use {AZURE_CLIENT_ID}",
+            status_code=400
+        )
+    
+    # Get Azure AD authorization URL
+    auth_url = AuthService.get_authorization_url(state)
+    
+    # Redirect to Azure AD
     return RedirectResponse(url=auth_url, status_code=302)
 
 
-@app.get("/auth/url")
-async def get_auth_url():
-    """Get the OAuth authorization URL as JSON."""
-    auth_url = AuthService.get_authorization_url()
-    return {"auth_url": auth_url}
+@app.post("/token")
+async def token(request: Request):
+    """OAuth 2.0 Token endpoint - exchanges code for JWT token."""
+    form_data = await request.form()
+    code = form_data.get("code")
+    
+    if not code:
+        return Response(
+            content=json.dumps({
+                "error": "invalid_request",
+                "error_description": "Missing authorization code"
+            }),
+            status_code=400,
+            media_type="application/json"
+        )
+    
+    try:
+        # Exchange code for Azure AD token
+        token_data = await AuthService.exchange_code_for_token(code)
+        azure_access_token = token_data.get("access_token")
+        
+        # Get user info from Azure
+        user_info = await AuthService.get_user_info(azure_access_token)
+        
+        # Create our JWT token
+        jwt_token = AuthService.create_jwt_token(user_info)
+        
+        return {
+            "access_token": jwt_token,
+            "token_type": "Bearer",
+            "expires_in": 86400,  # 24 hours
+            "scope": "openid profile email"
+        }
+        
+    except Exception as e:
+        logger.error(f"Token exchange error: {e}")
+        return Response(
+            content=json.dumps({
+                "error": "invalid_grant",
+                "error_description": str(e)
+            }),
+            status_code=400,
+            media_type="application/json"
+        )
 
 
-@app.get("/auth/callback")
-async def auth_callback(code: str = None, error: str = None, state: str = None):
-    """Handle OAuth callback from Azure."""
+@app.get("/callback")
+async def oauth_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None
+):
+    """OAuth 2.0 callback endpoint."""
     if error:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"OAuth error: {error}"
+        return Response(
+            content=json.dumps({
+                "error": error,
+                "error_description": error_description or "Authorization failed"
+            }),
+            status_code=400,
+            media_type="application/json"
         )
     
     if not code:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Authorization code not provided"
+        return Response(
+            content=json.dumps({
+                "error": "invalid_request",
+                "error_description": "Missing authorization code"
+            }),
+            status_code=400,
+            media_type="application/json"
         )
     
-    try:
-        # Exchange code for token
-        token_data = await AuthService.exchange_code_for_token(code)
-        access_token = token_data.get("access_token")
-        
-        # Get user info
-        user_info = await AuthService.get_user_info(access_token)
-        
-        # Create JWT token
-        jwt_token = AuthService.create_jwt_token(user_info)
-        
-        # Return success page with token
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Authentication Successful - Telnyx MCP</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
-                .success {{ color: green; }}
-                .token {{ background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; word-break: break-all; font-family: monospace; font-size: 12px; }}
-                .user-info {{ background: #e8f4fd; padding: 15px; margin: 10px 0; border-radius: 5px; }}
-                code {{ background: #f5f5f5; padding: 2px 4px; border-radius: 3px; }}
-            </style>
-        </head>
-        <body>
-            <h1 class="success">✅ Authentication Successful!</h1>
-            <div class="user-info">
-                <h3>Welcome, {user_info.get('displayName', 'User')}!</h3>
-                <p><strong>Email:</strong> {user_info.get('mail') or user_info.get('userPrincipalName', 'N/A')}</p>
-                <p><strong>ID:</strong> {user_info.get('id', 'N/A')}</p>
-            </div>
-            <h3>Your JWT Token:</h3>
-            <div class="token">{jwt_token}</div>
-            <p><strong>Instructions:</strong></p>
-            <ol>
-                <li>Copy the token above</li>
-                <li>Use it in the Authorization header as: <code>Bearer &lt;token&gt;</code></li>
-                <li>The token expires in {os.getenv('JWT_EXPIRATION_HOURS', '24')} hours</li>
-            </ol>
-            <p><a href="/test-auth">Test your authentication</a> | <a href="/docs">API Documentation</a></p>
-        </body>
-        </html>
-        """
-        return HTMLResponse(content=html_content)
-        
-    except Exception as e:
-        logger.error(f"OAuth callback error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Authentication failed: {str(e)}"
-        )
+    # Client should exchange this code for a token
+    return {
+        "code": code,
+        "state": state,
+        "message": "Exchange this code at /token endpoint"
+    }
 
 
-@app.get("/auth/me")
-async def get_me(current_user: Dict[str, Any] = Depends(get_current_user)):
-    """Get current user information."""
-    return {"user": current_user}
-
-
-@app.get("/test-auth")
-async def test_auth_page():
-    """Serve a page to test authentication."""
-    tools_list = list(telnyx_mcp_server.tools.keys())
-    tools_json = json.dumps(tools_list)
+@app.post("/register")
+async def register(request: Request):
+    """OAuth 2.0 Dynamic Client Registration (RFC7591).
     
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Telnyx MCP Server - Test Authentication</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; max-width: 900px; margin: 50px auto; padding: 20px; }}
-            .container {{ margin: 20px 0; }}
-            input, button, select {{ padding: 10px; margin: 5px; }}
-            input[type="text"] {{ width: 400px; }}
-            select {{ width: 200px; }}
-            .response {{ background: #f5f5f5; padding: 15px; margin: 10px 0; border-radius: 5px; min-height: 100px; max-height: 400px; overflow-y: auto; }}
-            .error {{ color: red; }}
-            .success {{ color: green; }}
-            pre {{ white-space: pre-wrap; word-wrap: break-word; }}
-            .tool-test {{ background: #f9f9f9; padding: 15px; margin: 10px 0; border-radius: 5px; }}
-        </style>
-    </head>
-    <body>
-        <h1>Telnyx MCP Server - Authentication Test</h1>
-        
-        <div class="container">
-            <h3>1. Login to get token:</h3>
-            <button onclick="login()">Start Azure OAuth Login</button>
-        </div>
-        
-        <div class="container">
-            <h3>2. Test authenticated endpoint:</h3>
-            <input type="text" id="token" placeholder="Paste your JWT token here" />
-            <button onclick="testAuth()">Test /auth/me</button>
-        </div>
-        
-        <div class="container">
-            <h3>3. Test MCP Tools:</h3>
-            <button onclick="listTools()">List Available Tools</button>
-            
-            <div class="tool-test">
-                <h4>Test a Tool:</h4>
-                <select id="toolSelect">
-                    <option value="">Select a tool...</option>
-                </select>
-                <button onclick="showToolDetails()">Show Tool Details</button>
-                <button onclick="testTool()">Execute Tool</button>
-                <div id="toolParams" style="margin-top: 10px;"></div>
-            </div>
-        </div>
-        
-        <div class="container">
-            <h3>Response:</h3>
-            <div id="response" class="response">Ready to test...</div>
-        </div>
-        
-        <script>
-            const availableTools = {tools_json};
-            
-            // Populate tool selector
-            const toolSelect = document.getElementById('toolSelect');
-            availableTools.forEach(tool => {{
-                const option = document.createElement('option');
-                option.value = tool;
-                option.textContent = tool;
-                toolSelect.appendChild(option);
-            }});
-            
-            function login() {{
-                fetch('/auth/url')
-                    .then(response => response.json())
-                    .then(data => {{
-                        if (data.auth_url) {{
-                            window.open(data.auth_url, '_blank');
-                            document.getElementById('response').innerHTML = '<span class="success">✅ Login window opened. Complete the login and copy your token.</span>';
-                        }}
-                    }})
-                    .catch(error => {{
-                        document.getElementById('response').innerHTML = '<span class="error">❌ Error: ' + error + '</span>';
-                    }});
-            }}
-            
-            function testAuth() {{
-                const token = document.getElementById('token').value;
-                if (!token) {{
-                    document.getElementById('response').innerHTML = '<span class="error">❌ Please enter a token first</span>';
-                    return;
-                }}
-                
-                fetch('/auth/me', {{
-                    headers: {{
-                        'Authorization': 'Bearer ' + token
-                    }}
-                }})
-                .then(response => response.json())
-                .then(data => {{
-                    document.getElementById('response').innerHTML = '<span class="success">✅ Authentication Success!</span><br><pre>' + JSON.stringify(data, null, 2) + '</pre>';
-                }})
-                .catch(error => {{
-                    document.getElementById('response').innerHTML = '<span class="error">❌ Error: ' + error + '</span>';
-                }});
-            }}
-            
-            function listTools() {{
-                const token = document.getElementById('token').value;
-                if (!token) {{
-                    document.getElementById('response').innerHTML = '<span class="error">❌ Please enter a token first</span>';
-                    return;
-                }}
-                
-                fetch('/mcp', {{
-                    method: 'POST',
-                    headers: {{
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token
-                    }},
-                    body: JSON.stringify({{
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "tools/list",
-                        "params": {{}}
-                    }})
-                }})
-                .then(response => response.json())
-                .then(data => {{
-                    document.getElementById('response').innerHTML = '<span class="success">✅ Available Telnyx Tools:</span><br><pre>' + JSON.stringify(data, null, 2) + '</pre>';
-                }})
-                .catch(error => {{
-                    document.getElementById('response').innerHTML = '<span class="error">❌ Error: ' + error + '</span>';
-                }});
-            }}
-            
-            function showToolDetails() {{
-                const selectedTool = document.getElementById('toolSelect').value;
-                if (!selectedTool) {{
-                    alert('Please select a tool first');
-                    return;
-                }}
-                
-                // For now, just show the tool name
-                document.getElementById('toolParams').innerHTML = `<p>Selected tool: <strong>${{selectedTool}}</strong></p>`;
-                document.getElementById('response').innerHTML = `Ready to execute tool: ${{selectedTool}}`;
-            }}
-            
-            function testTool() {{
-                const token = document.getElementById('token').value;
-                const selectedTool = document.getElementById('toolSelect').value;
-                
-                if (!token) {{
-                    document.getElementById('response').innerHTML = '<span class="error">❌ Please enter a token first</span>';
-                    return;
-                }}
-                
-                if (!selectedTool) {{
-                    document.getElementById('response').innerHTML = '<span class="error">❌ Please select a tool first</span>';
-                    return;
-                }}
-                
-                // Example parameters for common tools
-                let args = {{}};
-                if (selectedTool === 'send_sms') {{
-                    args = {{ to: '+1234567890', from: '+0987654321', text: 'Test message from Telnyx MCP' }};
-                }}
-                
-                fetch('/mcp', {{
-                    method: 'POST',
-                    headers: {{
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token
-                    }},
-                    body: JSON.stringify({{
-                        "jsonrpc": "2.0",
-                        "id": 2,
-                        "method": "tools/call",
-                        "params": {{
-                            "name": selectedTool,
-                            "arguments": args
-                        }}
-                    }})
-                }})
-                .then(response => response.json())
-                .then(data => {{
-                    document.getElementById('response').innerHTML = '<span class="success">✅ Tool Execution Result:</span><br><pre>' + JSON.stringify(data, null, 2) + '</pre>';
-                }})
-                .catch(error => {{
-                    document.getElementById('response').innerHTML = '<span class="error">❌ Error: ' + error + '</span>';
-                }});
-            }}
-        </script>
-    </body>
-    </html>
+    Since we're using Azure AD, we return our pre-registered app details.
     """
-    return HTMLResponse(content=html_content)
-
-
-# REST endpoints for tools and resources (authenticated)
-@app.get("/tools")
-async def list_tools(current_user: Dict[str, Any] = Depends(get_current_user)):
-    """REST endpoint to list available tools."""
-    logger.info(f"User {current_user.get('email')} requested tools list")
-    return {"tools": [tool.dict() for tool in telnyx_mcp_server.tools.values()]}
-
-
-@app.get("/resources")
-async def list_resources(current_user: Dict[str, Any] = Depends(get_current_user)):
-    """REST endpoint to list available resources."""
-    logger.info(f"User {current_user.get('email')} requested resources list")
-    return {"resources": [resource.dict() for resource in telnyx_mcp_server.resources.values()]}
+    try:
+        client_data = await request.json()
+    except:
+        client_data = {}
+    
+    # Return our Azure AD app registration
+    return {
+        "client_id": AZURE_CLIENT_ID,
+        "client_secret": None,  # We don't expose the secret
+        "registration_access_token": None,
+        "registration_client_uri": None,
+        "client_id_issued_at": int(datetime.utcnow().timestamp()),
+        "client_secret_expires_at": 0,
+        "redirect_uris": [AZURE_REDIRECT_URI],
+        "grant_types": ["authorization_code"],
+        "response_types": ["code"],
+        "token_endpoint_auth_method": "client_secret_post",
+        "application_type": "web",
+        "token_endpoint_auth_signing_alg": "RS256"
+    }
 
 
 # MCP Protocol Endpoints
-@app.get("/mcp/stream")
-async def mcp_stream_info():
-    """Information about the MCP stream endpoint."""
-    return {
-        "info": "Telnyx MCP Streamable HTTP Transport Endpoint",
-        "description": "This endpoint accepts POST requests with JSON-RPC 2.0 messages for MCP communication",
-        "protocol_version": "2024-11-05",
-        "authentication": "Required - use Bearer token from /auth/login",
-        "methods": ["POST"],
-        "available_methods": [
-            "initialize",
-            "tools/list",
-            "tools/call",
-            "resources/list",
-            "resources/read"
-        ],
-        "example_request": {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {
-                    "name": "test-client",
-                    "version": "1.0.0"
-                }
-            }
-        }
-    }
-
-
-@app.post("/mcp/stream")
-async def mcp_stream_endpoint(request: Request, current_user: Dict[str, Any] = Depends(get_current_user)):
-    """Simplified MCP SSE endpoint that always returns SSE responses.
-    
-    This endpoint is designed for compatibility with Claude.ai and always
-    returns Server-Sent Events regardless of Accept headers.
-    """
-    # Parse request body
-    try:
-        message = await request.json()
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in request: {e}")
-        # Return SSE error
-        async def error_generator():
-            yield {
-                "event": "error",
-                "data": json.dumps({
-                    "jsonrpc": "2.0",
-                    "id": None,
-                    "error": {
-                        "code": -32700,
-                        "message": "Parse error",
-                        "data": str(e)
-                    }
-                })
-            }
-        return EventSourceResponse(error_generator())
-    
-    logger.info(f"MCP/stream: User {current_user.get('email')} sent {message.get('method')}")
-    
-    # Process the message and always return SSE
-    response = await process_mcp_message(message, current_user)
-    
-    # Always return SSE response
-    async def event_generator():
-        yield {
-            "event": "message",
-            "data": json.dumps(response)
-        }
-    
-    return EventSourceResponse(event_generator())
-
-
-@app.get("/mcp/capabilities")
-async def mcp_capabilities():
-    """Return MCP server capabilities."""
-    return {
-        "protocolVersion": "2024-11-05",
-        "capabilities": {
-            "tools": {"listChanged": True},
-            "resources": {"subscribe": True, "listChanged": True}
-        },
-        "serverInfo": {
-            "name": "Telnyx MCP Server",
-            "version": "1.0.0"
-        }
-    }
-
-
-@app.options("/mcp/stream")
-async def mcp_stream_options():
-    """Handle CORS preflight for MCP stream endpoint."""
-    return {
-        "status": "ok",
-        "methods": ["POST", "OPTIONS"],
-        "headers": ["Content-Type", "Accept", "Authorization"]
-    }
-
-
-@app.options("/mcp")
-async def mcp_options():
-    """Handle CORS preflight for MCP endpoint."""
-    return {
-        "status": "ok",
-        "methods": ["POST", "GET", "OPTIONS"],
-        "headers": ["Content-Type", "Accept", "Authorization"]
-    }
-
-
-async def process_mcp_message(message: Dict[str, Any], current_user: Dict[str, Any]) -> Dict[str, Any]:
-    """Process an MCP message and return the response."""
-    method = message.get("method")
-    params = message.get("params", {})
-    msg_id = message.get("id")
-    
-    result = None
-    error = None
-    
-    try:
-        if method == "initialize":
-            result = await telnyx_mcp_server.handle_initialize(params)
-            # Add user info to initialization response
-            result["userInfo"] = {
-                "email": current_user.get("email"),
-                "name": current_user.get("name"),
-                "authenticated": True
-            }
-        elif method == "tools/list":
-            result = await telnyx_mcp_server.handle_tools_list(params)
-        elif method == "tools/call":
-            result = await telnyx_mcp_server.handle_tools_call(params)
-        elif method == "resources/list":
-            result = await telnyx_mcp_server.handle_resources_list(params)
-        elif method == "resources/read":
-            result = await telnyx_mcp_server.handle_resources_read(params)
-        else:
-            error = {
-                "code": -32601,
-                "message": f"Method '{method}' not found"
-            }
-    except Exception as e:
-        logger.error(f"MCP processing error: {e}", exc_info=True)
-        error = {
-            "code": -32603,
-            "message": f"Internal error: {str(e)}"
-        }
-    
-    # Create response
-    response = {
-        "jsonrpc": "2.0",
-        "id": msg_id
-    }
-    
-    if error:
-        response["error"] = error
-    else:
-        response["result"] = result
-    
-    return response
-
-
 @app.post("/mcp")
-async def mcp_endpoint(request: Request, current_user: Dict[str, Any] = Depends(get_current_user)):
+async def mcp_endpoint(
+    request: Request,
+    current_user: Optional[Dict[str, Any]] = Depends(optional_auth)
+):
     """MCP endpoint implementing Streamable HTTP transport.
     
-    Returns JSON by default, SSE stream if Accept: text/event-stream.
+    Note: Authentication is optional to allow for OAuth discovery flow.
     """
     # Check Accept header
-    accept_header = request.headers.get("accept", "application/json").lower()
-    use_sse = "text/event-stream" in accept_header
+    accept_header = request.headers.get("accept", "application/json")
+    prefers_sse = "text/event-stream" in accept_header
     
-    # Parse request body
+    # Get session ID if provided
+    session_id = request.headers.get("mcp-session-id")
+    
     try:
-        message = await request.json()
+        body = await request.body()
+        message = json.loads(body)
     except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in request: {e}")
         error_response = {
             "jsonrpc": "2.0",
             "id": None,
@@ -737,57 +536,103 @@ async def mcp_endpoint(request: Request, current_user: Dict[str, Any] = Depends(
                 "data": str(e)
             }
         }
-        if use_sse:
+        
+        if prefers_sse:
             async def error_generator():
-                yield {
-                    "event": "error",
-                    "data": json.dumps(error_response)
-                }
+                yield {"data": json.dumps(error_response)}
             return EventSourceResponse(error_generator())
+        
         return error_response
     
-    logger.info(f"MCP: User {current_user.get('email')} sent {message.get('method')} (SSE: {use_sse})")
+    # Log request
+    if isinstance(message, list):
+        methods = [msg.get("method") for msg in message if isinstance(msg, dict)]
+        logger.info(f"MCP batch request: {methods} (user: {current_user.get('email') if current_user else 'anonymous'})")
+    else:
+        logger.info(f"MCP request: {message.get('method')} (user: {current_user.get('email') if current_user else 'anonymous'})")
     
-    # Process the message
-    response = await process_mcp_message(message, current_user)
+    # Process the message(s)
+    response = await telnyx_mcp_server.process_message(message, session_id)
     
-    # Return appropriate response format
-    if use_sse:
+    # Handle response format based on message type and Accept header
+    if response is None:
+        # Notification - return 202 Accepted with no body
+        return Response(status_code=202)
+    
+    # Check if this contains only responses (no requests)
+    is_batch = isinstance(response, list)
+    contains_requests = False
+    
+    if is_batch:
+        for resp in response:
+            if "result" in resp or "error" in resp:
+                # This is a response to a request
+                contains_requests = True
+                break
+    else:
+        if "result" in response or "error" in response:
+            contains_requests = True
+    
+    # Return appropriate format
+    if prefers_sse and contains_requests:
         async def event_generator():
-            yield {
-                "event": "message",
-                "data": json.dumps(response)
-            }
-        return EventSourceResponse(event_generator())
+            if is_batch:
+                # Send each response as a separate SSE event
+                for resp in response:
+                    yield {"data": json.dumps(resp)}
+            else:
+                yield {"data": json.dumps(response)}
+        
+        headers = {}
+        if session_id:
+            headers["mcp-session-id"] = session_id
+            
+        return EventSourceResponse(event_generator(), headers=headers)
     else:
         # Return JSON response
-        return response
+        headers = {}
+        if session_id:
+            headers["mcp-session-id"] = session_id
+            
+        return Response(
+            content=json.dumps(response),
+            media_type="application/json",
+            headers=headers
+        )
 
 
 @app.get("/mcp")
-async def mcp_info():
-    """Information about the MCP endpoint."""
-    return {
-        "info": "Telnyx MCP Streamable HTTP Endpoint",
-        "description": "This endpoint implements Streamable HTTP transport for MCP communication",
-        "protocol_version": "2024-11-05",
-        "transport": "Streamable HTTP",
-        "authentication": "Required - use Bearer token from /auth/login",
-        "compatibility": "Claude MCP Connector (anthropic-beta: mcp-client-2025-04-04)",
-        "response_formats": {
-            "json": "Default - returns single JSON response",
-            "sse": "When Accept: text/event-stream - returns Server-Sent Events stream"
-        },
-        "usage": {
-            "endpoint": "/mcp",
-            "method": "POST",
-            "headers": {
-                "Authorization": "Bearer <token>",
-                "Content-Type": "application/json",
-                "Accept": "application/json (default) or text/event-stream"
-            }
-        }
-    }
+async def mcp_sse_stream(
+    request: Request,
+    current_user: Optional[Dict[str, Any]] = Depends(optional_auth)
+):
+    """GET endpoint for server-initiated SSE stream."""
+    # Get session ID if provided
+    session_id = request.headers.get("mcp-session-id")
+    
+    # Check Accept header
+    accept_header = request.headers.get("accept", "")
+    if "text/event-stream" not in accept_header:
+        return Response(
+            status_code=405,
+            content="Method not allowed - this endpoint requires Accept: text/event-stream"
+        )
+    
+    async def event_generator():
+        # For now, just keep the connection open
+        # In a real implementation, this would send server-initiated messages
+        try:
+            while True:
+                await asyncio.sleep(30)  # Send keepalive every 30 seconds
+                yield {"event": "ping", "data": ""}
+        except asyncio.CancelledError:
+            logger.info("SSE stream closed")
+    
+    headers = {}
+    if session_id:
+        headers["mcp-session-id"] = session_id
+        
+    return EventSourceResponse(event_generator(), headers=headers)
 
 
 if __name__ == "__main__":
