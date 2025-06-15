@@ -562,8 +562,16 @@ async def health_check():
 @app.get("/.well-known/oauth-protected-resource")
 async def oauth_protected_resource_metadata(request: Request):
     """OAuth 2.0 Protected Resource Metadata (RFC9728)."""
-    # Get base URL from request
-    base_url = str(request.base_url).rstrip('/')
+    # Get base URL from request, handling proxy headers
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()
+    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    
+    if forwarded_proto and forwarded_host:
+        # Running behind a proxy (like Azure App Service)
+        base_url = f"{forwarded_proto}://{forwarded_host}"
+    else:
+        # Direct access
+        base_url = str(request.base_url).rstrip('/')
     
     return {
         "resource": base_url,
@@ -580,8 +588,16 @@ async def oauth_protected_resource_metadata(request: Request):
 @app.get("/.well-known/oauth-authorization-server")
 async def oauth_metadata(request: Request):
     """OAuth 2.0 Authorization Server Metadata (RFC8414)."""
-    # Get base URL from request
-    base_url = str(request.base_url).rstrip('/')
+    # Get base URL from request, handling proxy headers
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()
+    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    
+    if forwarded_proto and forwarded_host:
+        # Running behind a proxy (like Azure App Service)
+        base_url = f"{forwarded_proto}://{forwarded_host}"
+    else:
+        # Direct access
+        base_url = str(request.base_url).rstrip('/')
     
     return {
         "issuer": base_url,
@@ -759,7 +775,15 @@ async def mcp_endpoint(
                 method = message.get("method")
                 if method not in ["initialize", "notifications/initialized"]:
                     # Other methods require authentication
-                    base_url = str(request.base_url).rstrip('/')
+                    # Get base URL from request, handling proxy headers
+                    forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()
+                    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+                    
+                    if forwarded_proto and forwarded_host:
+                        base_url = f"{forwarded_proto}://{forwarded_host}"
+                    else:
+                        base_url = str(request.base_url).rstrip('/')
+                    
                     headers = {
                         "WWW-Authenticate": f'Bearer realm="{base_url}", resource_metadata="{base_url}/.well-known/oauth-protected-resource"'
                     }
