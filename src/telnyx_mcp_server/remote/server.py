@@ -691,14 +691,16 @@ async def token(request: Request):
 
 @app.get("/auth/callback")
 async def oauth_callback(
+    request: Request,
     code: Optional[str] = None,
     state: Optional[str] = None,
     error: Optional[str] = None,
     error_description: Optional[str] = None
 ):
     """OAuth 2.0 callback endpoint - matches Azure AD redirect URI."""
-    # Check if this is coming from Claude.ai based on the state parameter
-    # Claude.ai typically includes a redirect_uri in the state or expects a specific format
+    # Check Accept header to determine response format
+    accept_header = request.headers.get("accept", "text/html").lower()
+    wants_json = "application/json" in accept_header
     
     if error:
         # For errors, we can return a simple HTML page
@@ -728,15 +730,28 @@ async def oauth_callback(
         """
         return Response(content=html_content, media_type="text/html")
     
-    # For successful authorization, return an HTML page that will handle the OAuth flow
-    # This page will either redirect to Claude or display a success message
+    # Claude.ai expects to be able to handle the OAuth callback itself
+    # Check if this request is coming from Claude by looking for specific patterns
+    user_agent = request.headers.get("user-agent", "").lower()
+    referrer = request.headers.get("referer", "")
+    
+    # If Accept header prefers JSON or this looks like an API request, return JSON
+    if wants_json or "mcp" in user_agent or "claude" in referrer.lower():
+        # Return a simple JSON response for Claude to handle
+        return {
+            "code": code,
+            "state": state,
+            "status": "success"
+        }
+    
+    # For browser-based flows, return a simple HTML page
     html_content = f"""
     <html>
     <head>
-        <title>Authorization Successful</title>
+        <title>Authorization Complete</title>
         <style>
             body {{
-                font-family: Arial, sans-serif;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                 display: flex;
                 justify-content: center;
                 align-items: center;
@@ -749,7 +764,7 @@ async def oauth_callback(
                 padding: 2rem;
                 background-color: white;
                 border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
                 max-width: 400px;
             }}
             .success {{
@@ -759,53 +774,38 @@ async def oauth_callback(
             }}
             h1 {{
                 margin: 0 0 1rem 0;
-                color: #333;
+                color: #1a1a1a;
+                font-size: 1.5rem;
+                font-weight: 600;
             }}
             p {{
                 color: #666;
                 margin: 0.5rem 0;
+                line-height: 1.5;
             }}
-            .code {{
-                background-color: #f3f4f6;
-                padding: 0.5rem;
-                border-radius: 4px;
-                font-family: monospace;
-                font-size: 0.9rem;
-                word-break: break-all;
-                margin: 1rem 0;
+            .close-text {{
+                margin-top: 2rem;
+                font-size: 0.875rem;
+                color: #999;
             }}
         </style>
+        <script>
+            // Only try to close if we're in a popup
+            if (window.opener || window.parent !== window) {{
+                setTimeout(() => {{
+                    window.close();
+                }}, 1500);
+            }}
+        </script>
     </head>
     <body>
         <div class="container">
             <div class="success">✓</div>
-            <h1>Authorization Successful!</h1>
+            <h1>Authorization Complete</h1>
             <p>You have successfully authorized the Telnyx MCP Server.</p>
-            <p>You can now close this window and return to Claude.</p>
-            <p style="margin-top: 2rem; font-size: 0.9rem; color: #999;">
-                If this window doesn't close automatically, you can close it manually.
-            </p>
+            <p>You can close this window and return to Claude.</p>
+            <p class="close-text">This window will close automatically.</p>
         </div>
-        <script>
-            // Try to close the window after a short delay
-            setTimeout(() => {{
-                window.close();
-            }}, 3000);
-            
-            // If window.close() doesn't work, try to communicate with the opener
-            if (window.opener) {{
-                try {{
-                    // Send the authorization code back to the opener if possible
-                    window.opener.postMessage({{
-                        type: 'authorization_complete',
-                        code: '{code}',
-                        state: '{state}'
-                    }}, '*');
-                }} catch (e) {{
-                    console.error('Could not communicate with opener:', e);
-                }}
-            }}
-        </script>
     </body>
     </html>
     """
