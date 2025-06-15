@@ -329,7 +329,6 @@ async def root():
         "endpoints": {
             "mcp": "/mcp",
             "oauth_authorization_server": "/.well-known/oauth-authorization-server",
-            "oauth_protected_resource": "/.well-known/oauth-protected-resource",
             "health": "/health"
         },
         "tools_available": len(telnyx_mcp_server.tools)
@@ -347,22 +346,7 @@ async def health_check():
     }
 
 
-@app.get("/.well-known/oauth-protected-resource")
-async def oauth_protected_resource_metadata(request: Request):
-    """OAuth 2.0 Protected Resource Metadata (RFC9728)."""
-    # Get base URL from request
-    base_url = str(request.base_url).rstrip('/')
-    
-    return {
-        "resource": base_url,
-        "authorization_servers": [base_url],
-        "scopes_supported": ["openid", "profile", "email"],
-        "bearer_methods_supported": ["header"],
-        "resource_signing_alg_values_supported": ["RS256"],
-        "resource_documentation": f"{base_url}/docs",
-        "resource_policy_uri": f"{base_url}/privacy",
-        "resource_tos_uri": f"{base_url}/terms"
-    }
+# Removed oauth-protected-resource endpoint - not in 2025-03-26 spec
 
 
 @app.get("/.well-known/oauth-authorization-server")
@@ -535,42 +519,8 @@ async def mcp_endpoint(
     
     Note: Authentication is optional to allow for OAuth discovery flow.
     """
-    # Check if this is a protected request (not initialize)
-    try:
-        body = await request.body()
-        message = json.loads(body)
-        
-        # Allow initialize and metadata discovery without auth
-        if isinstance(message, dict):
-            method = message.get("method")
-            if method in ["initialize", "notifications/initialized"]:
-                # These don't require auth
-                pass
-            elif not current_user:
-                # Other methods require authentication
-                base_url = str(request.base_url).rstrip('/')
-                headers = {
-                    "WWW-Authenticate": f'Bearer realm="{base_url}", resource_metadata="{base_url}/.well-known/oauth-protected-resource"'
-                }
-                return Response(
-                    content=json.dumps({
-                        "jsonrpc": "2.0",
-                        "id": message.get("id"),
-                        "error": {
-                            "code": -32603,
-                            "message": "Authentication required"
-                        }
-                    }),
-                    status_code=401,
-                    headers=headers,
-                    media_type="application/json"
-                )
-        
-        # Reset body for processing
-        request._body = body
-        
-    except json.JSONDecodeError:
-        pass  # Will be handled below
+# No auth check here - let the request proceed
+    # Authentication is optional for discovery flow
     # Check Accept header
     accept_header = request.headers.get("accept", "application/json")
     prefers_sse = "text/event-stream" in accept_header
