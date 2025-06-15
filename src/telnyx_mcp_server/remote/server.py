@@ -211,7 +211,7 @@ async def root():
             "type": "Azure OAuth 2.0",
             "login_endpoint": "/auth/login",
             "test_page": "/test-auth",
-            "required_for": ["/mcp/stream", "/tools", "/resources"]
+            "required_for": ["/mcp", "/mcp/stream", "/tools", "/resources"]
         },
         "endpoints": {
             "health": "/health",
@@ -331,7 +331,7 @@ async def get_me(current_user: Dict[str, Any] = Depends(get_current_user)):
 async def test_auth_page():
     """Serve a page to test authentication."""
     tools_list = list(telnyx_mcp_server.tools.keys())
-    tools_json = str(tools_list).replace("'", '"')
+    tools_json = json.dumps(tools_list)
     
     html_content = f"""
     <!DOCTYPE html>
@@ -439,7 +439,7 @@ async def test_auth_page():
                     return;
                 }}
                 
-                fetch('/mcp/stream', {{
+                fetch('/mcp', {{
                     method: 'POST',
                     headers: {{
                         'Content-Type': 'application/json',
@@ -493,7 +493,7 @@ async def test_auth_page():
                     args = {{ to: '+1234567890', from: '+0987654321', text: 'Test message from Telnyx MCP' }};
                 }}
                 
-                fetch('/mcp/stream', {{
+                fetch('/mcp', {{
                     method: 'POST',
                     headers: {{
                         'Content-Type': 'application/json',
