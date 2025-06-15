@@ -28,6 +28,10 @@ load_dotenv()
 # Configure logging
 logger = get_logger(__name__)
 
+# Version information
+__version__ = "0.2.0"  # Increment this when deploying changes
+DEPLOYMENT_TIMESTAMP = os.getenv("DEPLOYMENT_TIMESTAMP", "local-dev")
+
 # Pydantic Models for MCP protocol
 class Tool(BaseModel):
     name: str
@@ -204,13 +208,17 @@ app.add_middleware(
 @app.get("/")
 async def root():
     """Root endpoint with server information."""
+    redirect_uri = os.getenv("AZURE_REDIRECT_URI", "http://localhost:8000/auth/callback")
     return {
         "name": "Telnyx Remote MCP Server",
+        "version": __version__,
+        "deployment_timestamp": DEPLOYMENT_TIMESTAMP,
         "status": "healthy",
         "authentication": {
             "type": "Azure OAuth 2.0",
             "login_endpoint": "/auth/login",
             "test_page": "/test-auth",
+            "redirect_uri": redirect_uri,
             "required_for": ["/mcp", "/mcp/stream", "/tools", "/resources"]
         },
         "endpoints": {
@@ -220,7 +228,7 @@ async def root():
             "me": "/auth/me",
             "test": "/test-auth",
             "mcp": "/mcp",
-            "mcp_legacy": "/mcp/stream",
+            "mcp_stream": "/mcp/stream",
             "docs": "/docs"
         },
         "tools_available": len(telnyx_mcp_server.tools)
@@ -233,7 +241,9 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "telnyx-mcp-server",
-        "mode": "remote"
+        "mode": "remote",
+        "version": __version__,
+        "deployment_timestamp": DEPLOYMENT_TIMESTAMP
     }
 
 
@@ -574,76 +584,45 @@ async def mcp_stream_info():
 
 @app.post("/mcp/stream")
 async def mcp_stream_endpoint(request: Request, current_user: Dict[str, Any] = Depends(get_current_user)):
-    """Main MCP endpoint with streamable HTTP support."""
+    """Simplified MCP SSE endpoint that always returns SSE responses.
+    
+    This endpoint is designed for compatibility with Claude.ai and always
+    returns Server-Sent Events regardless of Accept headers.
+    """
+    # Parse request body
     try:
         message = await request.json()
-        logger.info(f"User {current_user.get('email')} sent MCP message: {message.get('method')}")
-        
-        method = message.get("method")
-        params = message.get("params", {})
-        msg_id = message.get("id")
-        
-        if method == "initialize":
-            result = await telnyx_mcp_server.handle_initialize(params)
-            # Add user info to initialization response
-            result["userInfo"] = {
-                "email": current_user.get("email"),
-                "name": current_user.get("name"),
-                "authenticated": True
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in request: {e}")
+        # Return SSE error
+        async def error_generator():
+            yield {
+                "event": "error",
+                "data": json.dumps({
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {
+                        "code": -32700,
+                        "message": "Parse error",
+                        "data": str(e)
+                    }
+                })
             }
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": result
-            }
-        elif method == "tools/list":
-            result = await telnyx_mcp_server.handle_tools_list(params)
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": result
-            }
-        elif method == "tools/call":
-            result = await telnyx_mcp_server.handle_tools_call(params)
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": result
-            }
-        elif method == "resources/list":
-            result = await telnyx_mcp_server.handle_resources_list(params)
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": result
-            }
-        elif method == "resources/read":
-            result = await telnyx_mcp_server.handle_resources_read(params)
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": result
-            }
-        else:
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "error": {
-                    "code": -32601,
-                    "message": f"Method '{method}' not found"
-                }
-            }
-        
-    except Exception as e:
-        logger.error(f"MCP stream error: {e}")
-        return {
-            "jsonrpc": "2.0",
-            "id": message.get("id") if 'message' in locals() else None,
-            "error": {
-                "code": -32603,
-                "message": f"Internal error: {str(e)}"
-            }
+        return EventSourceResponse(error_generator())
+    
+    logger.info(f"MCP/stream: User {current_user.get('email')} sent {message.get('method')}")
+    
+    # Process the message and always return SSE
+    response = await process_mcp_message(message, current_user)
+    
+    # Always return SSE response
+    async def event_generator():
+        yield {
+            "event": "message",
+            "data": json.dumps(response)
         }
+    
+    return EventSourceResponse(event_generator())
 
 
 @app.get("/mcp/capabilities")
