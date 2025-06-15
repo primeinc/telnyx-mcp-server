@@ -697,32 +697,120 @@ async def oauth_callback(
     error_description: Optional[str] = None
 ):
     """OAuth 2.0 callback endpoint - matches Azure AD redirect URI."""
+    # Check if this is coming from Claude.ai based on the state parameter
+    # Claude.ai typically includes a redirect_uri in the state or expects a specific format
+    
     if error:
-        return Response(
-            content=json.dumps({
-                "error": error,
-                "error_description": error_description or "Authorization failed"
-            }),
-            status_code=400,
-            media_type="application/json"
-        )
+        # For errors, we can return a simple HTML page
+        html_content = f"""
+        <html>
+        <head><title>Authorization Failed</title></head>
+        <body>
+            <h1>Authorization Failed</h1>
+            <p>Error: {error}</p>
+            <p>Description: {error_description or "Authorization failed"}</p>
+            <p>You can close this window and try again.</p>
+        </body>
+        </html>
+        """
+        return Response(content=html_content, media_type="text/html")
     
     if not code:
-        return Response(
-            content=json.dumps({
-                "error": "invalid_request",
-                "error_description": "Missing authorization code"
-            }),
-            status_code=400,
-            media_type="application/json"
-        )
+        html_content = """
+        <html>
+        <head><title>Authorization Failed</title></head>
+        <body>
+            <h1>Authorization Failed</h1>
+            <p>Missing authorization code</p>
+            <p>You can close this window and try again.</p>
+        </body>
+        </html>
+        """
+        return Response(content=html_content, media_type="text/html")
     
-    # Return code for client to exchange
-    return {
-        "code": code,
-        "state": state,
-        "message": "Authorization successful. Exchange this code at /token endpoint."
-    }
+    # For successful authorization, return an HTML page that will handle the OAuth flow
+    # This page will either redirect to Claude or display a success message
+    html_content = f"""
+    <html>
+    <head>
+        <title>Authorization Successful</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+                background-color: #f5f5f5;
+            }}
+            .container {{
+                text-align: center;
+                padding: 2rem;
+                background-color: white;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                max-width: 400px;
+            }}
+            .success {{
+                color: #22c55e;
+                font-size: 3rem;
+                margin-bottom: 1rem;
+            }}
+            h1 {{
+                margin: 0 0 1rem 0;
+                color: #333;
+            }}
+            p {{
+                color: #666;
+                margin: 0.5rem 0;
+            }}
+            .code {{
+                background-color: #f3f4f6;
+                padding: 0.5rem;
+                border-radius: 4px;
+                font-family: monospace;
+                font-size: 0.9rem;
+                word-break: break-all;
+                margin: 1rem 0;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="success">✓</div>
+            <h1>Authorization Successful!</h1>
+            <p>You have successfully authorized the Telnyx MCP Server.</p>
+            <p>You can now close this window and return to Claude.</p>
+            <p style="margin-top: 2rem; font-size: 0.9rem; color: #999;">
+                If this window doesn't close automatically, you can close it manually.
+            </p>
+        </div>
+        <script>
+            // Try to close the window after a short delay
+            setTimeout(() => {{
+                window.close();
+            }}, 3000);
+            
+            // If window.close() doesn't work, try to communicate with the opener
+            if (window.opener) {{
+                try {{
+                    // Send the authorization code back to the opener if possible
+                    window.opener.postMessage({{
+                        type: 'authorization_complete',
+                        code: '{code}',
+                        state: '{state}'
+                    }}, '*');
+                }} catch (e) {{
+                    console.error('Could not communicate with opener:', e);
+                }}
+            }}
+        </script>
+    </body>
+    </html>
+    """
+    
+    return Response(content=html_content, media_type="text/html")
 
 
 @app.post("/register")
