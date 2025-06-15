@@ -2,13 +2,16 @@
 
 from fastapi import FastAPI, HTTPException, Request, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, HTMLResponse
+from fastapi.responses import FileResponse, RedirectResponse, HTMLResponse, StreamingResponse
+from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
 from typing import Any, Dict, Optional, List
 import logging
 import os
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
+import json
+import asyncio
 
 # Import authentication
 from .auth import AuthService, get_current_user, optional_auth
@@ -665,6 +668,109 @@ async def mcp_stream_options():
         "status": "ok",
         "methods": ["POST", "OPTIONS"],
         "headers": ["Content-Type", "Accept", "Authorization"]
+    }
+
+
+@app.post("/sse")
+async def mcp_sse_endpoint(request: Request, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """SSE endpoint for MCP communication - compatible with Claude MCP connector."""
+    async def event_generator():
+        try:
+            # Read the entire request body
+            body = await request.body()
+            message = json.loads(body)
+            
+            logger.info(f"SSE: User {current_user.get('email')} sent MCP message: {message.get('method')}")
+            
+            method = message.get("method")
+            params = message.get("params", {})
+            msg_id = message.get("id")
+            
+            # Process the message
+            result = None
+            error = None
+            
+            try:
+                if method == "initialize":
+                    result = await telnyx_mcp_server.handle_initialize(params)
+                    # Add user info to initialization response
+                    result["userInfo"] = {
+                        "email": current_user.get("email"),
+                        "name": current_user.get("name"),
+                        "authenticated": True
+                    }
+                elif method == "tools/list":
+                    result = await telnyx_mcp_server.handle_tools_list(params)
+                elif method == "tools/call":
+                    result = await telnyx_mcp_server.handle_tools_call(params)
+                elif method == "resources/list":
+                    result = await telnyx_mcp_server.handle_resources_list(params)
+                elif method == "resources/read":
+                    result = await telnyx_mcp_server.handle_resources_read(params)
+                else:
+                    error = {
+                        "code": -32601,
+                        "message": f"Method '{method}' not found"
+                    }
+            except Exception as e:
+                logger.error(f"SSE processing error: {e}", exc_info=True)
+                error = {
+                    "code": -32603,
+                    "message": f"Internal error: {str(e)}"
+                }
+            
+            # Create response
+            response = {
+                "jsonrpc": "2.0",
+                "id": msg_id
+            }
+            
+            if error:
+                response["error"] = error
+            else:
+                response["result"] = result
+            
+            # Send the response as SSE
+            yield {
+                "event": "message",
+                "data": json.dumps(response)
+            }
+            
+        except Exception as e:
+            logger.error(f"SSE stream error: {e}", exc_info=True)
+            error_response = {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {
+                    "code": -32603,
+                    "message": f"Stream error: {str(e)}"
+                }
+            }
+            yield {
+                "event": "error",
+                "data": json.dumps(error_response)
+            }
+    
+    return EventSourceResponse(event_generator())
+
+
+@app.get("/sse")
+async def mcp_sse_info():
+    """Information about the SSE endpoint."""
+    return {
+        "info": "Telnyx MCP Server-Sent Events Endpoint",
+        "description": "This endpoint accepts POST requests with JSON-RPC 2.0 messages for MCP communication via SSE",
+        "protocol_version": "2024-11-05",
+        "authentication": "Required - use Bearer token from /auth/login",
+        "compatibility": "Claude MCP Connector (anthropic-beta: mcp-client-2025-04-04)",
+        "usage": {
+            "endpoint": "/sse",
+            "method": "POST",
+            "headers": {
+                "Authorization": "Bearer <token>",
+                "Content-Type": "application/json"
+            }
+        }
     }
 
 
