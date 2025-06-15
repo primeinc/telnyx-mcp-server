@@ -219,7 +219,8 @@ async def root():
             "callback": "/auth/callback",
             "me": "/auth/me",
             "test": "/test-auth",
-            "mcp": "/mcp/stream",
+            "mcp": "/mcp",
+            "mcp_legacy": "/mcp/stream",
             "docs": "/docs"
         },
         "tools_available": len(telnyx_mcp_server.tools)
