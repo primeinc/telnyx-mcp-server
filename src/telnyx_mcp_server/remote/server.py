@@ -310,7 +310,10 @@ class TelnyxMCPServer:
                         "subscribe": True,
                         "listChanged": True
                     },
-                    "logging": {}
+                    "logging": {},
+                    "auth": {
+                        "oauth2": True
+                    }
                 },
                 "serverInfo": {
                     "name": "Telnyx MCP Server",
