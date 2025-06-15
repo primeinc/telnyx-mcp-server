@@ -87,6 +87,201 @@ class TelnyxMCPServer:
             logger.error(f"Failed to initialize tools: {e}", exc_info=True)
             self._tools_initialized = False
     
+    def _extract_parameters_from_docstring(self, docstring: str) -> Dict[str, Any]:
+        """Extract parameter definitions from tool docstring."""
+        if not docstring:
+            return {"type": "object", "properties": {}, "required": []}
+        
+        lines = docstring.split('\n')
+        in_args = False
+        properties = {}
+        required = []
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Start of Args section
+            if line.startswith("Args:"):
+                in_args = True
+                continue
+            
+            # End of Args section
+            if in_args and (line.startswith("Returns:") or line == "" and not lines):
+                break
+            
+            # Parse parameter lines
+            if in_args and line:
+                # Match parameter definition pattern
+                if ":" in line:
+                    parts = line.split(":", 1)
+                    param_name = parts[0].strip()
+                    description = parts[1].strip() if len(parts) > 1 else ""
+                    
+                    # Extract type and required status from description
+                    is_required = "Required." in description or "required." in description
+                    is_optional = "Optional" in description or "optional" in description
+                    
+                    # Determine type from description
+                    param_type = "string"  # default
+                    if "boolean" in description.lower() or "bool" in description.lower():
+                        param_type = "boolean"
+                    elif "integer" in description.lower() or "int" in description.lower():
+                        param_type = "integer"
+                    elif "number" in description.lower() or "float" in description.lower():
+                        param_type = "number"
+                    elif "array" in description.lower() or "list" in description.lower():
+                        param_type = "array"
+                    elif "object" in description.lower() or "dict" in description.lower():
+                        param_type = "object"
+                    
+                    # Clean up parameter name (remove trailing underscore)
+                    clean_name = param_name.rstrip('_')
+                    
+                    properties[clean_name] = {
+                        "type": param_type,
+                        "description": description
+                    }
+                    
+                    if is_required and not is_optional:
+                        required.append(clean_name)
+        
+        return {
+            "type": "object",
+            "properties": properties,
+            "required": required
+        }
+    
+    def _transform_tool_schema(self, tool: Dict[str, Any]) -> Dict[str, Any]:
+        """Transform tool schema to flatten nested request objects."""
+        # Create a copy of the tool
+        transformed = tool.copy()
+        
+        # Check if this tool has the nested request pattern
+        input_schema = tool.get("inputSchema", {})
+        properties = input_schema.get("properties", {})
+        
+        if len(properties) == 1 and "request" in properties:
+            # This is a nested schema - extract parameters from docstring
+            docstring = tool.get("description", "")
+            flattened_schema = self._extract_parameters_from_docstring(docstring)
+            
+            # Override with known schemas for common tools
+            if tool["name"] == "send_message":
+                flattened_schema = {
+                    "type": "object",
+                    "properties": {
+                        "from": {
+                            "type": "string",
+                            "description": "Sending address (phone number, alphanumeric sender ID, or short code)"
+                        },
+                        "to": {
+                            "type": "string",
+                            "description": "Receiving address(es)"
+                        },
+                        "text": {
+                            "type": "string",
+                            "description": "Message text"
+                        },
+                        "messaging_profile_id": {
+                            "type": "string",
+                            "description": "Optional. Messaging profile ID"
+                        },
+                        "subject": {
+                            "type": "string",
+                            "description": "Optional. Message subject"
+                        },
+                        "media_urls": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional. List of media URLs"
+                        },
+                        "webhook_url": {
+                            "type": "string",
+                            "description": "Optional. Webhook URL"
+                        },
+                        "type": {
+                            "type": "string",
+                            "enum": ["SMS", "MMS"],
+                            "description": "Optional. The protocol for sending the message"
+                        }
+                    },
+                    "required": ["from", "to", "text"]
+                }
+            elif tool["name"] == "get_message":
+                flattened_schema = {
+                    "type": "object",
+                    "properties": {
+                        "message_id": {
+                            "type": "string",
+                            "description": "The ID of the message to retrieve"
+                        }
+                    },
+                    "required": ["message_id"]
+                }
+            elif tool["name"] == "list_phone_numbers":
+                flattened_schema = {
+                    "type": "object",
+                    "properties": {
+                        "page": {
+                            "type": "integer",
+                            "description": "Page number",
+                            "default": 1
+                        },
+                        "page_size": {
+                            "type": "integer",
+                            "description": "Page size",
+                            "default": 20
+                        },
+                        "filter_phone_number": {
+                            "type": "string",
+                            "description": "Filter by phone number"
+                        },
+                        "filter_status": {
+                            "type": "string",
+                            "description": "Filter by status"
+                        },
+                        "filter_voice_enabled": {
+                            "type": "boolean",
+                            "description": "Filter by voice enabled"
+                        }
+                    },
+                    "required": []
+                }
+            elif tool["name"] == "get_assistant":
+                flattened_schema = {
+                    "type": "object",
+                    "properties": {
+                        "assistant_id": {
+                            "type": "string",
+                            "description": "Assistant ID"
+                        }
+                    },
+                    "required": ["assistant_id"]
+                }
+            elif tool["name"] == "start_assistant_call":
+                flattened_schema = {
+                    "type": "object",
+                    "properties": {
+                        "assistant_id": {
+                            "type": "string",
+                            "description": "ID of the assistant to use for the call"
+                        },
+                        "to": {
+                            "type": "string",
+                            "description": "Destination phone number to call"
+                        },
+                        "from": {
+                            "type": "string",
+                            "description": "Source phone number to call from (must be a number on your Telnyx account)"
+                        }
+                    },
+                    "required": ["assistant_id", "to", "from"]
+                }
+            
+            transformed["inputSchema"] = flattened_schema
+        
+        return transformed
+    
     async def handle_initialize(self, request_id: Any, params: Dict[str, Any], session_id: str = None) -> Dict[str, Any]:
         """Handle MCP initialize request."""
         # Get client's requested protocol version
@@ -130,11 +325,17 @@ class TelnyxMCPServer:
         """Handle tools/list request."""
         await self.initialize_tools()
         
+        # Transform tool schemas to flatten nested request objects
+        transformed_tools = []
+        for tool in self.tools.values():
+            transformed_tool = self._transform_tool_schema(tool)
+            transformed_tools.append(transformed_tool)
+        
         return {
             "jsonrpc": "2.0",
             "id": request_id,
             "result": {
-                "tools": list(self.tools.values())
+                "tools": transformed_tools
             }
         }
     
@@ -156,8 +357,20 @@ class TelnyxMCPServer:
             }
         
         try:
+            # Transform arguments if needed
+            tool_schema = self.tools[tool_name].get("inputSchema", {})
+            properties = tool_schema.get("properties", {})
+            
+            # If the tool expects a nested request object, wrap the arguments
+            if len(properties) == 1 and "request" in properties:
+                # This tool expects arguments wrapped in a request object
+                transformed_args = {"request": arguments}
+            else:
+                # Tool has been flattened or uses direct parameters
+                transformed_args = arguments
+            
             # Call the tool through the existing MCP instance
-            result = await mcp.call_tool(tool_name, arguments)
+            result = await mcp.call_tool(tool_name, transformed_args)
             
             # Format the result according to MCP protocol
             if hasattr(result, 'text'):
