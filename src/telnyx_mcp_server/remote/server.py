@@ -36,7 +36,7 @@ load_dotenv()
 logger = get_logger(__name__)
 
 # Version information
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 PROTOCOL_VERSION = "2025-03-26"
 
 
