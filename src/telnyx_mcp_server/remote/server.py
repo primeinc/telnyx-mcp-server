@@ -297,6 +297,8 @@ class TelnyxMCPServer:
         if session_id:
             self._initialized_sessions.add(session_id)
         
+        base_url = os.getenv("BASE_URL", "https://app-web-3ky2b33hy2dpm.azurewebsites.net")
+        
         return {
             "jsonrpc": "2.0",
             "id": request_id,
@@ -312,7 +314,10 @@ class TelnyxMCPServer:
                     },
                     "logging": {},
                     "auth": {
-                        "oauth2": True
+                        "oauth2": True,
+                        "authorizationServers": [
+                            base_url
+                        ]
                     }
                 },
                 "serverInfo": {
@@ -1093,7 +1098,7 @@ async def mcp_endpoint(
                         base_url = str(request.base_url).rstrip('/')
                     
                     headers = {
-                        "WWW-Authenticate": f'Bearer realm="{base_url}", authorization_uri="{base_url}/.well-known/mcp-oauth-metadata"'
+                        "WWW-Authenticate": f'Bearer realm="{base_url}", resource_metadata="{base_url}/.well-known/oauth-protected-resource"'
                     }
                     return Response(
                         content=json.dumps({
