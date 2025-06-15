@@ -1,0 +1,21 @@
+<step title="Incoming Request" date="2025-06-15T21:19:28.565" instance="8c12c4" url="/api/zipdeploy?isAsync=true" method="POST" type="request" pid="769,1,5" Accept="application/json" Host="app-web-3ky2b33hy2dpm.scm.azurewebsites.net" User-Agent="azsdk-go-zip-deploy/1.0.0 (go1.24.0 X:loopvar; linux),azdev/1.17.0 (Go go1.24.0 X:loopvar; linux/amd64)" Accept-Encoding="gzip" Authorization="Bea..." Content-Type="application/octet-stream" Content-Length="564703" X-Ms-Correlation-Request-Id="cb35b226ac1982f254f4ce7a6c9dcf00" X-ARR-LOG-ID="cb35b226-ac19-82f2-54f4-ce7a6c9dcf00" CLIENT-IP="75.61.95.225:2982" X-SITE-DEPLOYMENT-ID="app-web-3ky2b33hy2dpm" WAS-DEFAULT-HOSTNAME="app-web-3ky2b33hy2dpm.scm.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/zipdeploy?isAsync=true" X-Client-IP="75.61.95.225" X-Client-Port="2982" >
+  <step title="Cleanup Xml Logs" date="2025-06-15T21:19:28.574" >
+    <step title="Cleanup Infos" date="2025-06-15T21:19:28.586" totalFiles="398" totalCleanup="238" /><!-- duration: 3ms -->
+  </step><!-- duration: 20ms -->
+  <step title="ZipPushDeploy" date="2025-06-15T21:19:28.680" >
+    <step title="ZipDeploy. Extract zip. Remote build." date="2025-06-15T21:19:28.693" /><!-- duration: 6ms -->
+    <step title="None repository commit" date="2025-06-15T21:19:28.709" >
+      <step title="Commit id: add997ee-1350-43a6-afd3-8bbe491f33ea" date="2025-06-15T21:19:28.711" Message="N/A" AuthorName="N/A" AuthorEmail="N/A" /><!-- duration: 2ms -->
+    </step><!-- duration: 10ms -->
+    <step title="Starting PushDeployAsync" date="2025-06-15T21:19:28.721" /><!-- duration: 2ms -->
+    <step title="Writing artifact to /tmp/zipdeploy/cdfe27c6-16dd-425c-867e-bd049e60b332.zip" date="2025-06-15T21:19:28.766" >
+      <step title="Writing multipart request body to /tmp/zipdeploy/cdfe27c6-16dd-425c-867e-bd049e60b332.zip" date="2025-06-15T21:19:28.786" /><!-- duration: 2ms -->
+    </step><!-- duration: 117ms -->
+    <step title="Removing previous build artifact&apos;s manifest file" date="2025-06-15T21:19:28.893" >
+      <step title="Start deployment in the background" date="2025-06-15T21:19:28.969" >
+        <step title="Acquiring Deployment Lock" date="2025-06-15T21:19:29.015" /><!-- duration: 6ms -->
+        <step title="Acquired Deployment Lock" date="2025-06-15T21:19:29.051" /><!-- duration: 3ms -->
+      </step><!-- duration: 199ms -->
+    </step><!-- duration: 295ms -->
+    <step title="Outgoing response" date="2025-06-15T21:19:29.208" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 2ms -->
+  </step><!-- duration: 537ms -->

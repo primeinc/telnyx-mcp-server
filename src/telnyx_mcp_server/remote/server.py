@@ -535,6 +535,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all incoming HTTP requests."""
+    start_time = datetime.now()
+    
+    # Log request details
+    logger.info(f"HTTP Request: {request.method} {request.url.path}")
+    logger.info(f"Headers: {dict(request.headers)}")
+    logger.info(f"Query params: {dict(request.query_params)}")
+    
+    # Process request
+    response = await call_next(request)
+    
+    # Log response details
+    process_time = (datetime.now() - start_time).total_seconds()
+    logger.info(f"HTTP Response: {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time}s")
+    
+    return response
+
 
 @app.get("/")
 async def root():
@@ -620,6 +640,31 @@ async def oauth_metadata(request: Request):
         "code_challenge_methods_supported": ["S256"],
         "claims_supported": ["sub", "email", "name", "exp", "iat"],
         "service_documentation": f"{base_url}/docs"
+    }
+
+
+@app.get("/.well-known/mcp-oauth-metadata")
+async def mcp_oauth_metadata(request: Request):
+    """MCP OAuth 2.0 Metadata endpoint for Claude."""
+    # Get base URL from request, handling proxy headers
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()
+    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    
+    if forwarded_proto and forwarded_host:
+        # Running behind a proxy (like Azure App Service)
+        base_url = f"{forwarded_proto}://{forwarded_host}"
+    else:
+        # Direct access
+        base_url = str(request.base_url).rstrip('/')
+    
+    return {
+        "issuer": base_url,
+        "authorization_endpoint": f"{base_url}/authorize",
+        "token_endpoint": f"{base_url}/token",
+        "response_types_supported": ["code"],
+        "grant_types_supported": ["authorization_code"],
+        "scopes_supported": ["openid", "profile", "email"],
+        "code_challenge_methods_supported": ["S256"]
     }
 
 
