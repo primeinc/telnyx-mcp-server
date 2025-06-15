@@ -36,5 +36,8 @@ echo "Test authentication at: http://localhost:8000/test-auth"
 echo "API documentation at: http://localhost:8000/docs"
 echo ""
 
+# Set Python path
+export PYTHONPATH="${PYTHONPATH}:./src"
+
 # Run the server
 uvicorn telnyx_mcp_server.remote.server:app --reload --host 0.0.0.0 --port 8000

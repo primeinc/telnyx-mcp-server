@@ -17,6 +17,7 @@ from .auth import AuthService, get_current_user, optional_auth
 from ..mcp import mcp
 from ..config import settings
 from ..utils.logger import get_logger
+from mcp.types import Tool as MCPTool
 
 # Load environment variables
 load_dotenv()
@@ -44,31 +45,51 @@ class TelnyxMCPServer:
         """Initialize the MCP server with Telnyx tools."""
         self.tools: Dict[str, Tool] = {}
         self.resources: Dict[str, Resource] = {}
-        self.initialize_tools()
+        self._tools_initialized = False
     
-    def initialize_tools(self):
-        """Initialize available Telnyx tools from the existing MCP instance."""
-        # Get tools from the existing MCP implementation
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
+    async def initialize_tools(self):
+        """Initialize tools from MCP instance if not already done."""
+        if self._tools_initialized:
+            return
+            
         try:
-            tools_dict = loop.run_until_complete(mcp.get_tools())
+            # Import all Telnyx tools to ensure they're registered with MCP
+            from ..tools import (
+                assistants,
+                call_control,
+                cloud_storage,
+                connections,
+                embeddings,
+                messaging,
+                messaging_profiles,
+                phone_numbers,
+                secrets,
+                webhooks
+            )
+            
+            # Get the list of tools from MCP
+            tools_list = await mcp.list_tools()
             
             # Convert to our Tool format
-            for name, tool_def in tools_dict.items():
-                self.tools[name] = Tool(
-                    name=name,
+            for tool_def in tools_list:
+                # MCPTool has attributes: name, description, inputSchema
+                self.tools[tool_def.name] = Tool(
+                    name=tool_def.name,
                     description=tool_def.description or "",
                     inputSchema=tool_def.inputSchema
                 )
             
+            self._tools_initialized = True
             logger.info(f"Initialized {len(self.tools)} Telnyx tools")
+            
+            # Log the available tools for debugging
+            if self.tools:
+                logger.info(f"Available tools: {', '.join(self.tools.keys())}")
+            
         except Exception as e:
-            logger.error(f"Failed to initialize tools: {e}")
-        finally:
-            loop.close()
+            logger.error(f"Failed to initialize tools: {e}", exc_info=True)
+            # Don't mark as initialized on failure
+            self._tools_initialized = False
     
     async def handle_initialize(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle MCP initialize request."""
@@ -91,11 +112,16 @@ class TelnyxMCPServer:
     
     async def handle_tools_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle tools/list request."""
+        # Ensure tools are initialized
+        await self.initialize_tools()
         tools_list = [tool.dict() for tool in self.tools.values()]
         return {"tools": tools_list}
     
     async def handle_tools_call(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle tools/call request by delegating to the existing MCP implementation."""
+        # Ensure tools are initialized
+        await self.initialize_tools()
+        
         tool_name = params.get("name")
         arguments = params.get("arguments", {})
         
@@ -148,6 +174,8 @@ telnyx_mcp_server = TelnyxMCPServer()
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     logger.info("Starting Telnyx Remote MCP Server")
+    # Initialize tools asynchronously
+    await telnyx_mcp_server.initialize_tools()
     yield
     logger.info("Shutting down Telnyx Remote MCP Server")
 
