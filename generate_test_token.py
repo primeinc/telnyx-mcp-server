@@ -33,7 +33,4 @@ token_data = {
 
 token = jwt.encode(token_data, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
-print(f"Generated JWT token (expires in {JWT_EXPIRATION_HOURS} hours):")
 print(token)
-print("\nUse this token in the Authorization header:")
-print(f"Authorization: Bearer {token}")

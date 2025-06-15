@@ -672,104 +672,140 @@ async def mcp_stream_options():
     }
 
 
-@app.post("/sse")
-async def mcp_sse_endpoint(request: Request, current_user: Dict[str, Any] = Depends(get_current_user)):
-    """SSE endpoint for MCP communication - compatible with Claude MCP connector."""
-    async def event_generator():
-        try:
-            # Read the entire request body
-            body = await request.body()
-            message = json.loads(body)
-            
-            logger.info(f"SSE: User {current_user.get('email')} sent MCP message: {message.get('method')}")
-            
-            method = message.get("method")
-            params = message.get("params", {})
-            msg_id = message.get("id")
-            
-            # Process the message
-            result = None
-            error = None
-            
-            try:
-                if method == "initialize":
-                    result = await telnyx_mcp_server.handle_initialize(params)
-                    # Add user info to initialization response
-                    result["userInfo"] = {
-                        "email": current_user.get("email"),
-                        "name": current_user.get("name"),
-                        "authenticated": True
-                    }
-                elif method == "tools/list":
-                    result = await telnyx_mcp_server.handle_tools_list(params)
-                elif method == "tools/call":
-                    result = await telnyx_mcp_server.handle_tools_call(params)
-                elif method == "resources/list":
-                    result = await telnyx_mcp_server.handle_resources_list(params)
-                elif method == "resources/read":
-                    result = await telnyx_mcp_server.handle_resources_read(params)
-                else:
-                    error = {
-                        "code": -32601,
-                        "message": f"Method '{method}' not found"
-                    }
-            except Exception as e:
-                logger.error(f"SSE processing error: {e}", exc_info=True)
-                error = {
-                    "code": -32603,
-                    "message": f"Internal error: {str(e)}"
-                }
-            
-            # Create response
-            response = {
-                "jsonrpc": "2.0",
-                "id": msg_id
+@app.options("/mcp")
+async def mcp_options():
+    """Handle CORS preflight for MCP endpoint."""
+    return {
+        "status": "ok",
+        "methods": ["POST", "GET", "OPTIONS"],
+        "headers": ["Content-Type", "Accept", "Authorization"]
+    }
+
+
+async def process_mcp_message(message: Dict[str, Any], current_user: Dict[str, Any]) -> Dict[str, Any]:
+    """Process an MCP message and return the response."""
+    method = message.get("method")
+    params = message.get("params", {})
+    msg_id = message.get("id")
+    
+    result = None
+    error = None
+    
+    try:
+        if method == "initialize":
+            result = await telnyx_mcp_server.handle_initialize(params)
+            # Add user info to initialization response
+            result["userInfo"] = {
+                "email": current_user.get("email"),
+                "name": current_user.get("name"),
+                "authenticated": True
             }
-            
-            if error:
-                response["error"] = error
-            else:
-                response["result"] = result
-            
-            # Send the response as SSE
+        elif method == "tools/list":
+            result = await telnyx_mcp_server.handle_tools_list(params)
+        elif method == "tools/call":
+            result = await telnyx_mcp_server.handle_tools_call(params)
+        elif method == "resources/list":
+            result = await telnyx_mcp_server.handle_resources_list(params)
+        elif method == "resources/read":
+            result = await telnyx_mcp_server.handle_resources_read(params)
+        else:
+            error = {
+                "code": -32601,
+                "message": f"Method '{method}' not found"
+            }
+    except Exception as e:
+        logger.error(f"MCP processing error: {e}", exc_info=True)
+        error = {
+            "code": -32603,
+            "message": f"Internal error: {str(e)}"
+        }
+    
+    # Create response
+    response = {
+        "jsonrpc": "2.0",
+        "id": msg_id
+    }
+    
+    if error:
+        response["error"] = error
+    else:
+        response["result"] = result
+    
+    return response
+
+
+@app.post("/mcp")
+async def mcp_endpoint(request: Request, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """MCP endpoint implementing Streamable HTTP transport.
+    
+    Returns JSON by default, SSE stream if Accept: text/event-stream.
+    """
+    # Check Accept header
+    accept_header = request.headers.get("accept", "application/json").lower()
+    use_sse = "text/event-stream" in accept_header
+    
+    # Parse request body
+    try:
+        message = await request.json()
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in request: {e}")
+        error_response = {
+            "jsonrpc": "2.0",
+            "id": None,
+            "error": {
+                "code": -32700,
+                "message": "Parse error",
+                "data": str(e)
+            }
+        }
+        if use_sse:
+            async def error_generator():
+                yield {
+                    "event": "error",
+                    "data": json.dumps(error_response)
+                }
+            return EventSourceResponse(error_generator())
+        return error_response
+    
+    logger.info(f"MCP: User {current_user.get('email')} sent {message.get('method')} (SSE: {use_sse})")
+    
+    # Process the message
+    response = await process_mcp_message(message, current_user)
+    
+    # Return appropriate response format
+    if use_sse:
+        async def event_generator():
             yield {
                 "event": "message",
                 "data": json.dumps(response)
             }
-            
-        except Exception as e:
-            logger.error(f"SSE stream error: {e}", exc_info=True)
-            error_response = {
-                "jsonrpc": "2.0",
-                "id": None,
-                "error": {
-                    "code": -32603,
-                    "message": f"Stream error: {str(e)}"
-                }
-            }
-            yield {
-                "event": "error",
-                "data": json.dumps(error_response)
-            }
-    
-    return EventSourceResponse(event_generator())
+        return EventSourceResponse(event_generator())
+    else:
+        # Return JSON response
+        return response
 
 
-@app.get("/sse")
-async def mcp_sse_info():
-    """Information about the SSE endpoint."""
+@app.get("/mcp")
+async def mcp_info():
+    """Information about the MCP endpoint."""
     return {
-        "info": "Telnyx MCP Server-Sent Events Endpoint",
-        "description": "This endpoint accepts POST requests with JSON-RPC 2.0 messages for MCP communication via SSE",
+        "info": "Telnyx MCP Streamable HTTP Endpoint",
+        "description": "This endpoint implements Streamable HTTP transport for MCP communication",
         "protocol_version": "2024-11-05",
+        "transport": "Streamable HTTP",
         "authentication": "Required - use Bearer token from /auth/login",
         "compatibility": "Claude MCP Connector (anthropic-beta: mcp-client-2025-04-04)",
+        "response_formats": {
+            "json": "Default - returns single JSON response",
+            "sse": "When Accept: text/event-stream - returns Server-Sent Events stream"
+        },
         "usage": {
-            "endpoint": "/sse",
+            "endpoint": "/mcp",
             "method": "POST",
             "headers": {
                 "Authorization": "Bearer <token>",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Accept": "application/json (default) or text/event-stream"
             }
         }
     }
