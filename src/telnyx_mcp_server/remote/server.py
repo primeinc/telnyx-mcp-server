@@ -285,7 +285,7 @@ class TelnyxMCPServer:
         
         return transformed
     
-    async def handle_initialize(self, request_id: Any, params: Dict[str, Any], session_id: str = None) -> Dict[str, Any]:
+    async def handle_initialize(self, request_id: Any, params: Dict[str, Any], session_id: str = None, base_url: str = None) -> Dict[str, Any]:
         """Handle MCP initialize request."""
         # Get client's requested protocol version
         client_version = params.get("protocolVersion", PROTOCOL_VERSION)
@@ -297,7 +297,9 @@ class TelnyxMCPServer:
         if session_id:
             self._initialized_sessions.add(session_id)
         
-        base_url = os.getenv("BASE_URL", "https://app-web-3ky2b33hy2dpm.azurewebsites.net")
+        # Use provided base_url or fallback to environment variable
+        if not base_url:
+            base_url = os.getenv("BASE_URL", "http://localhost:8000")
         
         return {
             "jsonrpc": "2.0",
@@ -434,22 +436,22 @@ class TelnyxMCPServer:
             }
         }
     
-    async def process_message(self, message: Union[Dict, List], session_id: str = None) -> Union[Dict, List]:
+    async def process_message(self, message: Union[Dict, List], session_id: str = None, base_url: str = None) -> Union[Dict, List]:
         """Process a JSON-RPC message or batch."""
         if isinstance(message, list):
             # Batch request
             responses = []
             for msg in message:
                 if msg.get("jsonrpc") == "2.0":
-                    response = await self._process_single_message(msg, session_id)
+                    response = await self._process_single_message(msg, session_id, base_url)
                     if response:  # Only include responses for requests, not notifications
                         responses.append(response)
             return responses if responses else None
         else:
             # Single request
-            return await self._process_single_message(message, session_id)
+            return await self._process_single_message(message, session_id, base_url)
     
-    async def _process_single_message(self, message: Dict[str, Any], session_id: str = None) -> Optional[Dict[str, Any]]:
+    async def _process_single_message(self, message: Dict[str, Any], session_id: str = None, base_url: str = None) -> Optional[Dict[str, Any]]:
         """Process a single JSON-RPC message."""
         if message.get("jsonrpc") != "2.0":
             return {
@@ -471,7 +473,7 @@ class TelnyxMCPServer:
         try:
             # Route to appropriate handler
             if method == "initialize":
-                response = await self.handle_initialize(msg_id, params, session_id)
+                response = await self.handle_initialize(msg_id, params, session_id, base_url)
             elif method == "notifications/initialized":
                 await self.handle_initialized(params)
                 return None  # No response for notifications
@@ -512,6 +514,17 @@ class TelnyxMCPServer:
 
 # Initialize MCP server
 telnyx_mcp_server = TelnyxMCPServer()
+
+
+def get_base_url_from_request(request: Request) -> str:
+    """Extract base URL from request, handling proxy headers."""
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()
+    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    
+    if forwarded_proto and forwarded_host:
+        return f"{forwarded_proto}://{forwarded_host}"
+    else:
+        return str(request.base_url).rstrip('/')
 
 
 @asynccontextmanager
@@ -1088,14 +1101,7 @@ async def mcp_endpoint(
                 method = message.get("method")
                 if method not in ["initialize", "notifications/initialized"]:
                     # Other methods require authentication
-                    # Get base URL from request, handling proxy headers
-                    forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()
-                    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
-                    
-                    if forwarded_proto and forwarded_host:
-                        base_url = f"{forwarded_proto}://{forwarded_host}"
-                    else:
-                        base_url = str(request.base_url).rstrip('/')
+                    base_url = get_base_url_from_request(request)
                     
                     headers = {
                         "WWW-Authenticate": f'Bearer realm="{base_url}", resource_metadata="{base_url}/.well-known/oauth-protected-resource"'
@@ -1154,8 +1160,11 @@ async def mcp_endpoint(
     else:
         logger.info(f"MCP request: {message.get('method')} (user: {current_user.get('email') if current_user else 'anonymous'})")
     
+    # Get base URL for OAuth discovery
+    base_url = get_base_url_from_request(request)
+    
     # Process the message(s)
-    response = await telnyx_mcp_server.process_message(message, session_id)
+    response = await telnyx_mcp_server.process_message(message, session_id, base_url)
     
     # Handle response format based on message type and Accept header
     if response is None:
