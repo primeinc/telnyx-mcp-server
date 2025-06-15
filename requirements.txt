@@ -35,3 +35,5 @@ gunicorn>=20.1.0 ; python_version >= "3.10" and python_version < "4.0"
 pyjwt>=2.8.0 ; python_version >= "3.10" and python_version < "4.0"
 python-multipart>=0.0.9 ; python_version >= "3.10" and python_version < "4.0"
 azure-identity>=1.15.0 ; python_version >= "3.10" and python_version < "4.0"
+# Install the telnyx_mcp_server package itself
+-e .
