@@ -13,6 +13,8 @@ import json
 import asyncio
 from datetime import datetime
 import httpx
+import urllib.parse
+import secrets
 
 # Import authentication
 from .auth import (
@@ -20,6 +22,7 @@ from .auth import (
     AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_REDIRECT_URI, AZURE_TENANT_ID,
     AZURE_TOKEN_URL
 )
+from .auth_store import auth_store
 
 # Import existing Telnyx MCP components
 from ..mcp import mcp
@@ -628,7 +631,7 @@ async def authorize(
     code_challenge: Optional[str] = None,
     code_challenge_method: Optional[str] = "S256"
 ):
-    """OAuth 2.0 Authorization endpoint - redirects to Azure AD."""
+    """OAuth 2.0 Authorization endpoint - initiates the two-layer OAuth flow."""
     # Validate client_id matches our Azure app
     if client_id != AZURE_CLIENT_ID:
         return Response(
@@ -636,8 +639,28 @@ async def authorize(
             status_code=400
         )
     
-    # Get Azure AD authorization URL
-    auth_url = AuthService.get_authorization_url(state)
+    # Validate response_type
+    if response_type != "code":
+        return Response(
+            content="Only response_type=code is supported",
+            status_code=400
+        )
+    
+    # Generate a unique state for Azure AD if not provided
+    azure_state = state or secrets.token_urlsafe(32)
+    
+    # Create a session to track this OAuth flow
+    session_id = auth_store.create_session(
+        state=azure_state,
+        redirect_uri=redirect_uri,
+        pkce_challenge=code_challenge,
+        pkce_method=code_challenge_method
+    )
+    
+    logger.info(f"Created OAuth session {session_id[:8]}... for redirect_uri: {redirect_uri}")
+    
+    # Get Azure AD authorization URL with our generated state
+    auth_url = AuthService.get_authorization_url(azure_state)
     
     # Redirect to Azure AD
     return RedirectResponse(url=auth_url, status_code=302)
@@ -645,9 +668,23 @@ async def authorize(
 
 @app.post("/token")
 async def token(request: Request):
-    """OAuth 2.0 Token endpoint - exchanges code for JWT token."""
+    """OAuth 2.0 Token endpoint - exchanges MCP auth code for JWT token."""
     form_data = await request.form()
     code = form_data.get("code")
+    grant_type = form_data.get("grant_type")
+    client_id = form_data.get("client_id")
+    code_verifier = form_data.get("code_verifier")  # PKCE
+    
+    # Validate grant type
+    if grant_type != "authorization_code":
+        return Response(
+            content=json.dumps({
+                "error": "unsupported_grant_type",
+                "error_description": "Only authorization_code grant type is supported"
+            }),
+            status_code=400,
+            media_type="application/json"
+        )
     
     if not code:
         return Response(
@@ -660,15 +697,33 @@ async def token(request: Request):
         )
     
     try:
-        # Exchange code for Azure AD token
-        token_data = await AuthService.exchange_code_for_token(code)
-        azure_access_token = token_data.get("access_token")
+        # Retrieve the MCP auth code from our store
+        auth_code_data = auth_store.get_auth_code(code)
         
-        # Get user info from Azure
-        user_info = await AuthService.get_user_info(azure_access_token)
+        if not auth_code_data:
+            logger.warning(f"Invalid or expired MCP auth code: {code[:8]}...")
+            return Response(
+                content=json.dumps({
+                    "error": "invalid_grant",
+                    "error_description": "Authorization code is invalid or expired"
+                }),
+                status_code=400,
+                media_type="application/json"
+            )
         
-        # Create our JWT token
+        # Mark the code as used to prevent replay attacks
+        auth_store.mark_code_used(code)
+        
+        # PKCE validation would go here if needed
+        # For now, we'll just log if it was provided
+        if code_verifier:
+            logger.info(f"PKCE code_verifier provided: {len(code_verifier)} chars")
+        
+        # Create JWT token using the stored user info and Azure token
+        user_info = auth_code_data.user_info
         jwt_token = AuthService.create_jwt_token(user_info)
+        
+        logger.info(f"Issued JWT token for user: {user_info.get('mail', user_info.get('userPrincipalName'))}")
         
         return {
             "access_token": jwt_token,
@@ -678,13 +733,13 @@ async def token(request: Request):
         }
         
     except Exception as e:
-        logger.error(f"Token exchange error: {e}")
+        logger.error(f"Token exchange error: {e}", exc_info=True)
         return Response(
             content=json.dumps({
-                "error": "invalid_grant",
-                "error_description": str(e)
+                "error": "server_error",
+                "error_description": "An internal error occurred"
             }),
-            status_code=400,
+            status_code=500,
             media_type="application/json"
         )
 
@@ -697,13 +752,17 @@ async def oauth_callback(
     error: Optional[str] = None,
     error_description: Optional[str] = None
 ):
-    """OAuth 2.0 callback endpoint - matches Azure AD redirect URI."""
-    # Check Accept header to determine response format
-    accept_header = request.headers.get("accept", "text/html").lower()
-    wants_json = "application/json" in accept_header
+    """OAuth 2.0 callback endpoint - handles the two-layer OAuth flow.
     
+    This endpoint:
+    1. Receives the authorization code from Azure AD
+    2. Exchanges it for Azure AD tokens
+    3. Generates an MCP-specific authorization code
+    4. Redirects back to Claude.ai with the MCP code
+    """
     if error:
-        # For errors, we can return a simple HTML page
+        # Azure AD returned an error
+        logger.error(f"OAuth callback error: {error} - {error_description}")
         html_content = f"""
         <html>
         <head><title>Authorization Failed</title></head>
@@ -718,6 +777,7 @@ async def oauth_callback(
         return Response(content=html_content, media_type="text/html")
     
     if not code:
+        logger.error("OAuth callback missing authorization code")
         html_content = """
         <html>
         <head><title>Authorization Failed</title></head>
@@ -730,87 +790,199 @@ async def oauth_callback(
         """
         return Response(content=html_content, media_type="text/html")
     
-    # Claude.ai expects to be able to handle the OAuth callback itself
-    # Check if this request is coming from Claude by looking for specific patterns
-    user_agent = request.headers.get("user-agent", "").lower()
-    referrer = request.headers.get("referer", "")
-    
-    # If Accept header prefers JSON or this looks like an API request, return JSON
-    if wants_json or "mcp" in user_agent or "claude" in referrer.lower():
-        # Return a simple JSON response for Claude to handle
-        return {
-            "code": code,
-            "state": state,
-            "status": "success"
-        }
-    
-    # For browser-based flows, return a simple HTML page
-    html_content = f"""
-    <html>
-    <head>
-        <title>Authorization Complete</title>
-        <style>
-            body {{
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                height: 100vh;
-                margin: 0;
-                background-color: #f5f5f5;
-            }}
-            .container {{
-                text-align: center;
-                padding: 2rem;
-                background-color: white;
-                border-radius: 8px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                max-width: 400px;
-            }}
-            .success {{
-                color: #22c55e;
-                font-size: 3rem;
-                margin-bottom: 1rem;
-            }}
-            h1 {{
-                margin: 0 0 1rem 0;
-                color: #1a1a1a;
-                font-size: 1.5rem;
-                font-weight: 600;
-            }}
-            p {{
-                color: #666;
-                margin: 0.5rem 0;
-                line-height: 1.5;
-            }}
-            .close-text {{
-                margin-top: 2rem;
-                font-size: 0.875rem;
-                color: #999;
-            }}
-        </style>
-        <script>
-            // Only try to close if we're in a popup
-            if (window.opener || window.parent !== window) {{
-                setTimeout(() => {{
-                    window.close();
-                }}, 1500);
-            }}
-        </script>
-    </head>
-    <body>
-        <div class="container">
-            <div class="success">✓</div>
-            <h1>Authorization Complete</h1>
-            <p>You have successfully authorized the Telnyx MCP Server.</p>
-            <p>You can close this window and return to Claude.</p>
-            <p class="close-text">This window will close automatically.</p>
-        </div>
-    </body>
-    </html>
-    """
-    
-    return Response(content=html_content, media_type="text/html")
+    try:
+        # Find the session by state parameter
+        session = None
+        if state:
+            session = auth_store.get_session_by_state(state)
+            if not session:
+                logger.warning(f"Session not found for state: {state}")
+        
+        # Exchange the Azure AD code for tokens
+        logger.info("Exchanging Azure AD code for tokens")
+        async with httpx.AsyncClient() as client:
+            token_response = await client.post(
+                AZURE_TOKEN_URL,
+                data={
+                    "client_id": AZURE_CLIENT_ID,
+                    "client_secret": AZURE_CLIENT_SECRET,
+                    "code": code,
+                    "redirect_uri": AZURE_REDIRECT_URI,
+                    "grant_type": "authorization_code"
+                }
+            )
+            
+            if token_response.status_code != 200:
+                logger.error(f"Azure token exchange failed: {token_response.text}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to exchange authorization code"
+                )
+            
+            azure_token_data = token_response.json()
+            azure_access_token = azure_token_data.get("access_token")
+            
+            if not azure_access_token:
+                logger.error("No access token in Azure response")
+                raise HTTPException(
+                    status_code=500,
+                    detail="No access token received from Azure"
+                )
+        
+        # Get user info from Azure
+        logger.info("Fetching user info from Azure AD")
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                "https://graph.microsoft.com/v1.0/me",
+                headers={"Authorization": f"Bearer {azure_access_token}"}
+            )
+            
+            if user_response.status_code != 200:
+                logger.error(f"Failed to get user info: {user_response.text}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to get user information"
+                )
+            
+            user_info = user_response.json()
+            logger.info(f"Retrieved user info for: {user_info.get('mail', user_info.get('userPrincipalName'))}")
+        
+        # Generate MCP-specific authorization code
+        mcp_auth_code = auth_store.create_auth_code(
+            azure_token=azure_access_token,
+            azure_token_data=azure_token_data,
+            user_info=user_info,
+            state=state,
+            redirect_uri=session.redirect_uri if session else None,
+            pkce_challenge=session.pkce_challenge if session else None,
+            pkce_method=session.pkce_method if session else None
+        )
+        
+        logger.info(f"Generated MCP auth code: {mcp_auth_code[:8]}...")
+        
+        # Check if this is a browser flow or Claude.ai flow
+        # For now, we'll detect Claude by looking for the session
+        if session and session.redirect_uri:
+            # This is part of a proper OAuth flow with a redirect URI
+            # Build the redirect URL back to Claude.ai
+            redirect_params = {
+                "code": mcp_auth_code,
+                "state": state
+            }
+            
+            # Parse the redirect URI and add parameters
+            if "?" in session.redirect_uri:
+                redirect_url = f"{session.redirect_uri}&{urllib.parse.urlencode(redirect_params)}"
+            else:
+                redirect_url = f"{session.redirect_uri}?{urllib.parse.urlencode(redirect_params)}"
+            
+            logger.info(f"Redirecting to Claude.ai: {redirect_url}")
+            return RedirectResponse(url=redirect_url, status_code=302)
+        
+        # For browser-based flows or testing, show success page with the MCP code
+        html_content = f"""
+        <html>
+        <head>
+            <title>Authorization Complete</title>
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100vh;
+                    margin: 0;
+                    background-color: #f5f5f5;
+                    padding: 1rem;
+                }}
+                .container {{
+                    text-align: center;
+                    padding: 2rem;
+                    background-color: white;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    max-width: 500px;
+                    width: 100%;
+                }}
+                .success {{
+                    color: #22c55e;
+                    font-size: 3rem;
+                    margin-bottom: 1rem;
+                }}
+                h1 {{
+                    margin: 0 0 1rem 0;
+                    color: #1a1a1a;
+                    font-size: 1.5rem;
+                    font-weight: 600;
+                }}
+                p {{
+                    color: #666;
+                    margin: 0.5rem 0;
+                    line-height: 1.5;
+                }}
+                .code-box {{
+                    background-color: #f3f4f6;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 4px;
+                    padding: 1rem;
+                    margin: 1.5rem 0;
+                    font-family: monospace;
+                    font-size: 0.875rem;
+                    word-break: break-all;
+                    user-select: all;
+                }}
+                .instructions {{
+                    text-align: left;
+                    margin: 1.5rem 0;
+                    padding: 1rem;
+                    background-color: #f9fafb;
+                    border-radius: 4px;
+                }}
+                .instructions li {{
+                    margin: 0.5rem 0;
+                    color: #374151;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="success">✓</div>
+                <h1>Authorization Complete</h1>
+                <p>You have successfully authenticated with Azure AD.</p>
+                <p>Your MCP authorization code is:</p>
+                <div class="code-box">{mcp_auth_code}</div>
+                <div class="instructions">
+                    <p><strong>Next steps:</strong></p>
+                    <ol>
+                        <li>Copy the authorization code above</li>
+                        <li>Return to Claude.ai</li>
+                        <li>Complete the connection process</li>
+                    </ol>
+                </div>
+                <p style="margin-top: 2rem; font-size: 0.875rem; color: #999;">
+                    This code expires in 10 minutes and can only be used once.
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return Response(content=html_content, media_type="text/html")
+        
+    except Exception as e:
+        logger.error(f"OAuth callback error: {str(e)}", exc_info=True)
+        html_content = f"""
+        <html>
+        <head><title>Authorization Failed</title></head>
+        <body>
+            <h1>Authorization Failed</h1>
+            <p>An error occurred during authentication.</p>
+            <p>Error: {str(e)}</p>
+            <p>Please close this window and try again.</p>
+        </body>
+        </html>
+        """
+        return Response(content=html_content, media_type="text/html", status_code=500)
 
 
 @app.post("/register")
