@@ -508,17 +508,18 @@ async def register(request: Request):
         client_data = {}
     
     # Return our Azure AD app registration
+    # For public clients, we return an empty string for client_secret
     return {
         "client_id": AZURE_CLIENT_ID,
-        "client_secret": None,  # We don't expose the secret
-        "registration_access_token": None,
-        "registration_client_uri": None,
+        "client_secret": "",  # Empty string for public client
+        "registration_access_token": "",
+        "registration_client_uri": "",
         "client_id_issued_at": int(datetime.utcnow().timestamp()),
         "client_secret_expires_at": 0,
         "redirect_uris": [AZURE_REDIRECT_URI],
         "grant_types": ["authorization_code"],
         "response_types": ["code"],
-        "token_endpoint_auth_method": "client_secret_post",
+        "token_endpoint_auth_method": "none",  # Public client
         "application_type": "web",
         "token_endpoint_auth_signing_alg": "RS256"
     }
