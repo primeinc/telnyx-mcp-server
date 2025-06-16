@@ -4,8 +4,14 @@
 echo "Starting Telnyx Remote MCP Server..."
 echo "===================================="
 
-# Export any additional environment variables if needed
+# Enable pip caching for faster deployments
+export PIP_CACHE_DIR=/home/pipcache
 export PYTHONUNBUFFERED=1
+
+# Create cache directory if it doesn't exist
+mkdir -p $PIP_CACHE_DIR
+
+echo "Pip cache directory: $PIP_CACHE_DIR"
 
 # Log environment info
 echo "Python version: $(python --version)"
@@ -23,10 +29,11 @@ echo "Starting gunicorn with uvicorn workers..."
 gunicorn -w 2 -k uvicorn.workers.UvicornWorker \
   -b 0.0.0.0:8000 \
   --timeout 600 \
+  --chdir src \
   --access-logfile '-' \
   --error-logfile '-' \
-  --preload \
-  src.telnyx_mcp_server.remote.server:app &
+  --log-level debug \
+  telnyx_mcp_server.remote.server:app &
 
 # Store PID
 GUNICORN_PID=$!

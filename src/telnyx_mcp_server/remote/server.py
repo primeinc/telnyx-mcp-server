@@ -39,7 +39,7 @@ load_dotenv()
 logger = get_logger(__name__)
 
 # Version information
-__version__ = "0.3.4"
+__version__ = "0.3.5"
 PROTOCOL_VERSION = "2025-03-26"
 
 
@@ -1375,6 +1375,19 @@ async def mcp_sse_stream(
     current_user: Optional[Dict[str, Any]] = Depends(optional_auth)
 ):
     """GET endpoint for server-initiated SSE stream."""
+    # SSE streams also require authentication
+    if not current_user:
+        base_url = get_base_url_from_request(request)
+        headers = {
+            "WWW-Authenticate": 'Bearer realm="MCP Server"',
+            "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"'
+        }
+        return Response(
+            content="Authentication required for SSE stream",
+            status_code=401,
+            headers=headers
+        )
+    
     # Get session ID if provided
     session_id = request.headers.get("mcp-session-id")
     
