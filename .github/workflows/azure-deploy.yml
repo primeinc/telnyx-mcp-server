@@ -78,6 +78,7 @@ jobs:
       with:
         app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
         slot-name: 'production'
+        startup-command: 'gunicorn -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --chdir src --access-logfile - --error-logfile - --log-level debug telnyx_mcp_server.remote.server:app'
         
     - name: Configure App Settings
       uses: azure/appservice-settings@v1
@@ -94,8 +95,3 @@ jobs:
             {"name": "ENVIRONMENT", "value": "production"},
             {"name": "LOG_LEVEL", "value": "INFO"}
           ]
-        general-settings-json: |
-          {
-            "linuxFxVersion": "PYTHON|3.11",
-            "appCommandLine": "gunicorn -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --chdir src --access-logfile - --error-logfile - telnyx_mcp_server.remote.server:app"
-          }
