@@ -1387,10 +1387,23 @@ async def mcp_sse_stream(
             "WWW-Authenticate": f'Bearer realm="MCP Server", resource_metadata_uri="{base_url}/.well-known/oauth-protected-resource"',
             "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"'
         }
+        
+        # Return the same response as POST /mcp for consistency
         return Response(
-            content="Authentication required for SSE stream",
+            content=json.dumps({
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {
+                    "code": -32603,
+                    "message": "Authentication required",
+                    "data": {
+                        "oauth_url": f"{base_url}/.well-known/oauth-authorization-server"
+                    }
+                }
+            }),
             status_code=401,
-            headers=headers
+            headers=headers,
+            media_type="application/json"
         )
     
     # Get session ID if provided
