@@ -120,20 +120,41 @@ class AuthService:
         return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
     
     @staticmethod
-    def decode_jwt_token(token: str) -> Dict[str, Any]:
-        """Decode and validate JWT token"""
+    def decode_jwt_token(token: str, audience: Optional[str] = None) -> Dict[str, Any]:
+        """Decode and validate JWT token with strict validation per RFC 8725"""
         try:
-            payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+            # Decode with algorithm whitelisting (never trust alg header)
+            # Only allow HS256 which we use for signing
+            payload = jwt.decode(
+                token, 
+                JWT_SECRET_KEY, 
+                algorithms=[JWT_ALGORITHM],
+                options={"verify_signature": True, "verify_exp": True}
+            )
+            
+            # Additional claim validation per RFC 8725
+            # Note: PyJWT handles exp validation automatically when verify_exp=True
+            
+            # For MCP server, we don't use issuer/audience claims currently
+            # but this shows how to validate them if needed:
+            # if audience and payload.get("aud") != audience:
+            #     raise jwt.InvalidAudienceError("Invalid audience")
+            
             return payload
         except jwt.ExpiredSignatureError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token has expired"
             )
-        except jwt.InvalidTokenError:
+        except jwt.InvalidAudienceError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
+                detail="Invalid token audience"
+            )
+        except jwt.InvalidTokenError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid token: {str(e)}"
             )
 
 

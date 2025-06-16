@@ -15,6 +15,9 @@ from datetime import datetime
 import httpx
 import urllib.parse
 import secrets
+import time
+import hashlib
+import base64
 
 # Import authentication
 from .auth import (
@@ -36,7 +39,7 @@ load_dotenv()
 logger = get_logger(__name__)
 
 # Version information
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 PROTOCOL_VERSION = "2025-03-26"
 
 
@@ -647,6 +650,7 @@ async def oauth_metadata(request: Request):
         "issuer": base_url,
         "authorization_endpoint": f"{base_url}/authorize",
         "token_endpoint": f"{base_url}/token",
+        "userinfo_endpoint": f"{base_url}/userinfo",
         "registration_endpoint": f"{base_url}/register",
         "jwks_uri": f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/discovery/v2.0/keys" if AZURE_TENANT_ID else None,
         "response_types_supported": ["code"],
@@ -704,6 +708,7 @@ async def openid_configuration(request: Request):
         "issuer": base_url,
         "authorization_endpoint": f"{base_url}/authorize",
         "token_endpoint": f"{base_url}/token",
+        "userinfo_endpoint": f"{base_url}/userinfo",
         "jwks_uri": f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/discovery/v2.0/keys" if AZURE_TENANT_ID else None,
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code"],
@@ -777,6 +782,22 @@ async def authorize(
             status_code=400
         )
     
+    # PKCE is MANDATORY for public clients (RFC 7636)
+    if not code_challenge:
+        logger.error(f"Missing code_challenge from client_id: {client_id}")
+        return Response(
+            content="code_challenge is required for public clients",
+            status_code=400
+        )
+    
+    # Validate code_challenge_method - only S256 allowed for security
+    if code_challenge_method != "S256":
+        logger.error(f"Invalid code_challenge_method: {code_challenge_method}")
+        return Response(
+            content="Only S256 code_challenge_method is supported",
+            status_code=400
+        )
+    
     # Generate a unique state for Azure AD if not provided
     azure_state = state or secrets.token_urlsafe(32)
     
@@ -845,10 +866,48 @@ async def token(request: Request):
         # Mark the code as used to prevent replay attacks
         auth_store.mark_code_used(code)
         
-        # PKCE validation would go here if needed
-        # For now, we'll just log if it was provided
-        if code_verifier:
-            logger.info(f"PKCE code_verifier provided: {len(code_verifier)} chars")
+        # PKCE validation is MANDATORY for public clients (RFC 7636)
+        if auth_code_data.pkce_challenge:
+            if not code_verifier:
+                logger.error("PKCE code_verifier missing for code with challenge")
+                return Response(
+                    content=json.dumps({
+                        "error": "invalid_request",
+                        "error_description": "code_verifier is required for PKCE"
+                    }),
+                    status_code=400,
+                    media_type="application/json"
+                )
+            
+            # Validate PKCE - compute challenge from verifier and compare
+            if auth_code_data.pkce_method == "S256":
+                # SHA256 hash the verifier and base64url encode
+                verifier_bytes = code_verifier.encode('ascii')
+                challenge_bytes = hashlib.sha256(verifier_bytes).digest()
+                computed_challenge = base64.urlsafe_b64encode(challenge_bytes).decode('ascii').rstrip('=')
+            else:
+                # Plain method not allowed for security
+                logger.error(f"Unsupported PKCE method: {auth_code_data.pkce_method}")
+                return Response(
+                    content=json.dumps({
+                        "error": "invalid_request",
+                        "error_description": "Only S256 code_challenge_method is supported"
+                    }),
+                    status_code=400,
+                    media_type="application/json"
+                )
+            
+            # Compare with stored challenge
+            if computed_challenge != auth_code_data.pkce_challenge:
+                logger.error("PKCE verification failed - challenge mismatch")
+                return Response(
+                    content=json.dumps({
+                        "error": "invalid_grant",
+                        "error_description": "PKCE verification failed"
+                    }),
+                    status_code=400,
+                    media_type="application/json"
+                )
         
         # Create JWT token using the stored user info and Azure token
         user_info = auth_code_data.user_info
@@ -873,6 +932,18 @@ async def token(request: Request):
             status_code=500,
             media_type="application/json"
         )
+
+
+@app.get("/userinfo")
+async def userinfo(user: Dict[str, Any] = Depends(get_current_user)):
+    """OpenID Connect UserInfo endpoint."""
+    return {
+        "sub": user.get("sub"),
+        "email": user.get("email"),
+        "name": user.get("name"),
+        "email_verified": True,
+        "updated_at": int(time.time())
+    }
 
 
 @app.get("/auth/callback")

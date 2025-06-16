@@ -40,11 +40,11 @@ class AuthStore:
     Note: This is for development/testing. Production should use Redis or a database.
     """
     
-    def __init__(self, code_ttl: int = 600, session_ttl: int = 3600):
+    def __init__(self, code_ttl: int = 60, session_ttl: int = 3600):
         """Initialize the auth store.
         
         Args:
-            code_ttl: Time-to-live for auth codes in seconds (default: 10 minutes)
+            code_ttl: Time-to-live for auth codes in seconds (default: 60 seconds)
             session_ttl: Time-to-live for sessions in seconds (default: 1 hour)
         """
         self._codes: Dict[str, AuthCodeData] = {}
