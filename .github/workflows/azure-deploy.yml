@@ -1,0 +1,50 @@
+name: Azure Deployment
+
+# Configure to only run on pull_request targeting main branch
+# This prevents double deployments from both push and pull_request events
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, closed]
+
+jobs:
+  deploy:
+    # Only run deployment when PR is merged (closed and merged)
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    
+    # Add environment protection with required reviewers
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Run tests
+        run: |
+          # Add test commands here if available
+          echo "Tests would run here"
+          
+      - name: Build application
+        run: |
+          # Add build commands here
+          echo "Build would happen here"
+          
+      - name: Deploy to Azure
+        env:
+          # Add Azure deployment credentials
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+        run: |
+          # Add Azure deployment commands here
+          echo "Azure deployment would happen here"
+          echo "This deployment requires manual approval from production environment reviewers"
