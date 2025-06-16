@@ -51,7 +51,7 @@ resource web 'Microsoft.Web/sites@2022-03-01' = {
       minTlsVersion: '1.2'
       scmMinTlsVersion: '1.2'
       healthCheckPath: '/health'
-      appCommandLine: 'gunicorn -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --chdir src --access-logfile - --error-logfile - --log-level debug telnyx_mcp_server.remote.server:app'
+      appCommandLine: 'gunicorn -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --chdir src --access-logfile - --error-logfile - telnyx_mcp_server.remote.server:app'
       appSettings: [
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
@@ -100,6 +100,14 @@ resource web 'Microsoft.Web/sites@2022-03-01' = {
         {
           name: 'ENVIRONMENT'
           value: environment
+        }
+        {
+          name: 'LOG_LEVEL'
+          value: 'INFO'
+        }
+        {
+          name: 'GUNICORN_CMD_ARGS'
+          value: '--log-level $LOG_LEVEL'
         }
         {
           name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'

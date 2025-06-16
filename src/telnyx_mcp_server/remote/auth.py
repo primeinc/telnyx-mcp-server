@@ -21,6 +21,14 @@ JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-me-in-production")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRATION_HOURS = int(os.getenv("JWT_EXPIRATION_HOURS", "24"))
 
+# Validate JWT secret in production
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+if ENVIRONMENT == "production" and JWT_SECRET_KEY == "change-me-in-production":
+    raise ValueError(
+        "JWT_SECRET_KEY must be set to a secure value in production. "
+        "Generate a secure key with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+    )
+
 # Azure OAuth URLs
 AZURE_AUTH_URL = f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/oauth2/v2.0/authorize"
 AZURE_TOKEN_URL = f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/oauth2/v2.0/token"

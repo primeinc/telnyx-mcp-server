@@ -39,7 +39,6 @@ webhook = [
 [project.scripts]
 start = "telnyx_mcp_server.server:run_server"
 telnyx-mcp-server = "telnyx_mcp_server.server:main"
-telnyx-mcp-server-remote = "telnyx_mcp_server.remote.server:app"
 
 [build-system]
 requires = ["hatchling"]

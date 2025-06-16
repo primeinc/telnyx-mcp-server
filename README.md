@@ -277,6 +277,44 @@ To enable webhooks in Claude Desktop, update your configuration:
 
 Telnyx now offers a remote MCP implementation based on the latest MCP specification. This allows you to access Telnyx's powerful communications APIs through a remotely hosted MCP server. No need to run the server locally. Learn more in the [official documentation](https://developers.telnyx.com/docs/mcp/remote-mcp).
 
+## Running the Remote Server
+
+The remote server provides an HTTP/SSE interface for the Telnyx MCP server, suitable for cloud deployment:
+
+```bash
+# Run locally with gunicorn (same as Azure production)
+# Set LOG_LEVEL environment variable (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+export LOG_LEVEL=DEBUG  # or INFO for production
+gunicorn -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --chdir src --access-logfile - --error-logfile - --log-level $LOG_LEVEL telnyx_mcp_server.remote.server:app
+
+# Or run with uvicorn for development
+cd src && python -m uvicorn telnyx_mcp_server.remote.server:app --host 0.0.0.0 --port 8000 --reload --log-level debug
+```
+
+The server provides:
+- OAuth 2.0 authentication with Azure AD
+- JWT-based API authentication
+- MCP protocol over HTTP/SSE
+- Health check endpoint at `/health`
+
+## CI/CD with GitHub Actions
+
+This project includes GitHub Actions workflow for automated deployment to Azure App Service. To set it up:
+
+1. **Create GitHub Secrets**:
+   - `AZURE_CLIENT_ID`: Your Azure app registration client ID
+   - `AZURE_TENANT_ID`: Your Azure tenant ID
+   - `AZURE_SUBSCRIPTION_ID`: Your Azure subscription ID
+   - `TELNYX_API_KEY`: Your Telnyx API key
+   - `JWT_SECRET_KEY`: A secure secret for JWT signing (generate with: `python -c 'import secrets; print(secrets.token_urlsafe(32))'`)
+   - `AZURE_CLIENT_SECRET`: Your Azure app registration client secret
+
+2. **Set up Azure OpenID Connect** (recommended):
+   Follow the [Azure documentation](https://docs.microsoft.com/azure/app-service/deploy-github-actions) to create federated credentials for your GitHub repository.
+
+3. **Deploy**:
+   Push to `main` or `feature/remote-mcp-server` branch to trigger automatic deployment.
+
 ## Contributing
 
 If you want to contribute or run from source:
