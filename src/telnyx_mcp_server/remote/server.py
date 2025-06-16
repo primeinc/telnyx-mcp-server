@@ -654,7 +654,7 @@ async def oauth_metadata(request: Request):
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["RS256"],
         "scopes_supported": ["openid", "profile", "email", "User.Read"],
-        "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic"],
+        "token_endpoint_auth_methods_supported": ["none"],
         "code_challenge_methods_supported": ["S256"],
         "claims_supported": ["sub", "email", "name", "exp", "iat"],
         "service_documentation": f"{base_url}/docs"
@@ -710,7 +710,7 @@ async def openid_configuration(request: Request):
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["RS256"],
         "scopes_supported": ["openid", "profile", "email"],
-        "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic"],
+        "token_endpoint_auth_methods_supported": ["none"],
         "code_challenge_methods_supported": ["S256"],
         "claims_supported": ["sub", "email", "name", "exp", "iat"]
     }
@@ -766,12 +766,9 @@ async def authorize(
     code_challenge_method: Optional[str] = "S256"
 ):
     """OAuth 2.0 Authorization endpoint - initiates the two-layer OAuth flow."""
-    # Validate client_id matches our Azure app
-    if client_id != AZURE_CLIENT_ID:
-        return Response(
-            content=f"Invalid client_id. Use {AZURE_CLIENT_ID}",
-            status_code=400
-        )
+    # For public clients like Claude Desktop, accept any client_id
+    # In production, you'd validate against registered clients
+    logger.info(f"Authorization request from client_id: {client_id}")
     
     # Validate response_type
     if response_type != "code":
@@ -1172,7 +1169,8 @@ async def mcp_endpoint(
                     base_url = get_base_url_from_request(request)
                     
                     headers = {
-                        "WWW-Authenticate": f'Bearer realm="{base_url}", resource_metadata="{base_url}/.well-known/oauth-protected-resource"'
+                        "WWW-Authenticate": 'Bearer realm="MCP Server"',
+                        "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"'
                     }
                     return Response(
                         content=json.dumps({
