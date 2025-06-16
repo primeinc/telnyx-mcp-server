@@ -1288,6 +1288,28 @@ async def mcp_endpoint(
     # Get session ID if provided
     session_id = request.headers.get("mcp-session-id")
     
+    # Parse request body
+    try:
+        body = await request.body()
+        message = json.loads(body) if body else {}
+    except json.JSONDecodeError as e:
+        error_response = {
+            "jsonrpc": "2.0",
+            "id": None,
+            "error": {
+                "code": -32700,
+                "message": "Parse error",
+                "data": str(e)
+            }
+        }
+        
+        if prefers_sse:
+            async def error_generator():
+                yield {"data": json.dumps(error_response)}
+            return EventSourceResponse(error_generator())
+        
+        return JSONResponse(error_response)
+    
     # Log request
     if isinstance(message, list):
         methods = [msg.get("method") for msg in message if isinstance(msg, dict)]
