@@ -11,7 +11,6 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME: telnyx-mcp-server
   PYTHON_VERSION: '3.11'
 
 permissions:
@@ -77,13 +76,13 @@ jobs:
       id: deploy-to-webapp
       uses: azure/webapps-deploy@v3
       with:
-        app-name: ${{ env.AZURE_WEBAPP_NAME }}
+        app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
         slot-name: 'production'
         
     - name: Configure App Settings
       uses: azure/appservice-settings@v1
       with:
-        app-name: ${{ env.AZURE_WEBAPP_NAME }}
+        app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
         app-settings-json: |
           [
             {"name": "TELNYX_API_KEY", "value": "${{ secrets.TELNYX_API_KEY }}"},
@@ -91,7 +90,7 @@ jobs:
             {"name": "AZURE_CLIENT_ID", "value": "${{ secrets.AZURE_CLIENT_ID }}"},
             {"name": "AZURE_CLIENT_SECRET", "value": "${{ secrets.AZURE_CLIENT_SECRET }}"},
             {"name": "AZURE_TENANT_ID", "value": "${{ secrets.AZURE_TENANT_ID }}"},
-            {"name": "AZURE_REDIRECT_URI", "value": "https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/auth/callback"},
+            {"name": "AZURE_REDIRECT_URI", "value": "https://${{ secrets.AZURE_WEBAPP_NAME }}.azurewebsites.net/auth/callback"},
             {"name": "ENVIRONMENT", "value": "production"},
             {"name": "LOG_LEVEL", "value": "INFO"}
           ]
