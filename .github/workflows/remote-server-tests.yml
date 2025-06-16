@@ -88,13 +88,12 @@ jobs:
         PYTHONPATH: ${{ github.workspace }}/src
       run: |
         echo "Testing FastAPI app initialization..."
-        python -c "
-        import sys
-        sys.path.insert(0, 'src')
-        from telnyx_mcp_server.remote.server import app
-        print('✅ FastAPI app imports successfully')
-        print(f'✅ App type: {type(app)}')
-        "
+        python -c |
+          import sys
+          sys.path.insert(0, 'src')
+          from telnyx_mcp_server.remote.server import app
+          print('✅ FastAPI app imports successfully')
+          print(f'✅ App type: {type(app)}')
     
     - name: Check OAuth and MCP endpoints
       env:
