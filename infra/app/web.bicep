@@ -51,7 +51,7 @@ resource web 'Microsoft.Web/sites@2022-03-01' = {
       minTlsVersion: '1.2'
       scmMinTlsVersion: '1.2'
       healthCheckPath: '/health'
-      appCommandLine: 'startup.sh'
+      appCommandLine: '/home/site/wwwroot/startup.sh'
       appSettings: [
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
@@ -116,18 +116,6 @@ resource web 'Microsoft.Web/sites@2022-03-01' = {
         {
           name: 'WEBSITES_PORT'
           value: '8000'
-        }
-        {
-          name: 'PIP_CACHE_DIR'
-          value: '/home/pipcache'
-        }
-        {
-          name: 'PIP_NO_CACHE_DIR'
-          value: 'false'
-        }
-        {
-          name: 'ORYX_DISABLE_PIP_CACHE'
-          value: 'false'
         }
       ]
     }

@@ -4,14 +4,7 @@
 echo "Starting Telnyx Remote MCP Server..."
 echo "===================================="
 
-# Enable pip caching for faster deployments
-export PIP_CACHE_DIR=/home/pipcache
 export PYTHONUNBUFFERED=1
-
-# Create cache directory if it doesn't exist
-mkdir -p $PIP_CACHE_DIR
-
-echo "Pip cache directory: $PIP_CACHE_DIR"
 
 # Log environment info
 echo "Python version: $(python --version)"
