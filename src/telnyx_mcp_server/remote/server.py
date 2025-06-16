@@ -1234,6 +1234,7 @@ async def mcp_endpoint(
     base_url = get_base_url_from_request(request)
     
     # Parse the request body first to check method
+    message = None
     try:
         body = await request.body()
         message = json.loads(body)
@@ -1275,24 +1276,8 @@ async def mcp_endpoint(
                 media_type="application/json"
             )
         
-        # Reset body for further processing
-        request._body = body
-        
-    except json.JSONDecodeError:
-        # Let it be handled by the normal error flow below
-        pass
-    # Check Accept header
-    accept_header = request.headers.get("accept", "application/json")
-    prefers_sse = "text/event-stream" in accept_header
-    
-    # Get session ID if provided
-    session_id = request.headers.get("mcp-session-id")
-    
-    # Parse request body
-    try:
-        body = await request.body()
-        message = json.loads(body) if body else {}
     except json.JSONDecodeError as e:
+        # Return parse error
         error_response = {
             "jsonrpc": "2.0",
             "id": None,
@@ -1302,20 +1287,21 @@ async def mcp_endpoint(
                 "data": str(e)
             }
         }
-        
-        if prefers_sse:
-            async def error_generator():
-                yield {"data": json.dumps(error_response)}
-            return EventSourceResponse(error_generator())
-        
         return JSONResponse(error_response)
+    # Check Accept header
+    accept_header = request.headers.get("accept", "application/json")
+    prefers_sse = "text/event-stream" in accept_header
+    
+    # Get session ID if provided
+    session_id = request.headers.get("mcp-session-id")
     
     # Log request
-    if isinstance(message, list):
-        methods = [msg.get("method") for msg in message if isinstance(msg, dict)]
-        logger.info(f"MCP batch request: {methods} (user: {current_user.get('email') if current_user else 'anonymous'})")
-    else:
-        logger.info(f"MCP request: {message.get('method')} (user: {current_user.get('email') if current_user else 'anonymous'})")
+    if message:
+        if isinstance(message, list):
+            methods = [msg.get("method") for msg in message if isinstance(msg, dict)]
+            logger.info(f"MCP batch request: {methods} (user: {current_user.get('email') if current_user else 'anonymous'})")
+        else:
+            logger.info(f"MCP request: {message.get('method')} (user: {current_user.get('email') if current_user else 'anonymous'})")
     
     # Get base URL for OAuth discovery
     base_url = get_base_url_from_request(request)
