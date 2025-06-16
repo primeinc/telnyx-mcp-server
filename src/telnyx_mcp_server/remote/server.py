@@ -626,10 +626,11 @@ async def oauth_protected_resource_metadata(request: Request):
         "authorization_servers": [base_url],
         "scopes_supported": ["openid", "profile", "email"],
         "bearer_methods_supported": ["header"],
-        "resource_signing_alg_values_supported": ["RS256"],
+        "resource_signing_alg_values_supported": ["HS256"],  # Changed to match our JWT signing
         "resource_documentation": f"{base_url}/docs",
         "resource_policy_uri": f"{base_url}/privacy",
-        "resource_tos_uri": f"{base_url}/terms"
+        "resource_tos_uri": f"{base_url}/terms",
+        "mcp_endpoints": [f"{base_url}/mcp"]  # Add MCP endpoint discovery
     }
 
 
@@ -659,7 +660,7 @@ async def oauth_metadata(request: Request):
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code"],
         "subject_types_supported": ["public"],
-        "id_token_signing_alg_values_supported": ["RS256"],
+        "id_token_signing_alg_values_supported": ["HS256"],
         "scopes_supported": ["openid", "profile", "email", "User.Read"],
         "token_endpoint_auth_methods_supported": ["none"],
         "code_challenge_methods_supported": ["S256"],
@@ -718,7 +719,7 @@ async def openid_configuration(request: Request):
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code"],
         "subject_types_supported": ["public"],
-        "id_token_signing_alg_values_supported": ["RS256"],
+        "id_token_signing_alg_values_supported": ["HS256"],
         "scopes_supported": ["openid", "profile", "email"],
         "token_endpoint_auth_methods_supported": ["none"],
         "code_challenge_methods_supported": ["S256"],
@@ -923,7 +924,7 @@ async def token(request: Request):
         return {
             "access_token": jwt_token,
             "token_type": "Bearer",
-            "expires_in": 86400,  # 24 hours
+            "expires_in": 86400,  # 24 hours in seconds
             "scope": "openid profile email"
         }
         
