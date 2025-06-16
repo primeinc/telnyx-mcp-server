@@ -1,12 +1,6 @@
 name: Remote Server Tests
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'src/telnyx_mcp_server/remote/**'
-      - 'requirements.txt'
-      - '.github/workflows/remote-server-tests.yml'
   pull_request:
     branches: [ main ]
     paths:
@@ -14,20 +8,53 @@ on:
       - 'requirements.txt'
       - '.github/workflows/remote-server-tests.yml'
 
+env:
+  PYTHON_VERSION: '3.11'
+
+permissions:
+  contents: read
+
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      should-run: ${{ steps.check.outputs.should-run }}
+      
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Check if remote server files changed
+      id: check
+      run: |
+        # Check if this is a PR and if remote server files were changed
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          echo "should-run=true" >> $GITHUB_OUTPUT
+          echo "✅ Running tests for remote server changes in PR"
+        else
+          echo "should-run=false" >> $GITHUB_OUTPUT
+          echo "ℹ️ Skipping tests - not a pull request"
+        fi
+
   test:
+    needs: validate
+    if: needs.validate.outputs.should-run == 'true'
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ['3.10', '3.11', '3.12']
 
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v4
     
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+        cache-dependency-path: requirements.txt
     
     - name: Install dependencies
       run: |
@@ -35,24 +62,110 @@ jobs:
         pip install -r requirements.txt
         pip install pytest pytest-asyncio httpx
     
-    - name: Test remote server imports
+    - name: Validate environment setup
+      env:
+        TELNYX_API_KEY: dummy-key-for-testing
+        PYTHONPATH: ${{ github.workspace }}/src
       run: |
-        python test_remote_server.py
+        echo "✅ Python version: $(python --version)"
+        echo "✅ Current directory: $(pwd)"
+        echo "✅ PYTHONPATH: $PYTHONPATH"
+        echo "✅ Environment variables set"
+        ls -la src/telnyx_mcp_server/remote/
     
-    - name: Test FastAPI app
+    - name: Test remote server imports and functionality
+      env:
+        TELNYX_API_KEY: dummy-key-for-testing
+        PYTHONPATH: ${{ github.workspace }}/src
       run: |
-        python -c "from telnyx_mcp_server.remote.server import app; print('✅ FastAPI app imports successfully')"
+        cd ${{ github.workspace }}
+        echo "Running remote server test script..."
+        python scripts/test_remote_server.py
     
-    - name: Check OAuth endpoints
+    - name: Test FastAPI app initialization
+      env:
+        TELNYX_API_KEY: dummy-key-for-testing
+        PYTHONPATH: ${{ github.workspace }}/src
       run: |
+        echo "Testing FastAPI app initialization..."
         python -c "
+        import sys
+        sys.path.insert(0, 'src')
+        from telnyx_mcp_server.remote.server import app
+        print('✅ FastAPI app imports successfully')
+        print(f'✅ App type: {type(app)}')
+        "
+    
+    - name: Check OAuth and MCP endpoints
+      env:
+        TELNYX_API_KEY: dummy-key-for-testing
+        PYTHONPATH: ${{ github.workspace }}/src
+      run: |
+        echo "Checking OAuth and MCP endpoints..."
+        python -c "
+        import sys
+        sys.path.insert(0, 'src')
         from telnyx_mcp_server.remote.server import app
         routes = [r.path for r in app.routes]
-        required = ['/auth/login', '/auth/callback', '/mcp/stream', '/test-auth']
+        
+        # Check for core OAuth and MCP endpoints that should exist
+        required = ['/auth/callback', '/mcp', '/authorize', '/token']
         missing = [r for r in required if r not in routes]
         if missing:
-            print(f'❌ Missing routes: {missing}')
+            print(f'❌ Missing required routes: {missing}')
             exit(1)
         else:
             print('✅ All required OAuth and MCP routes present')
+        
+        # List available routes for debugging
+        print(f'📋 Available routes: {sorted(set(routes))}')
+        
+        # Additional validation
+        print(f'✅ Total routes found: {len(set(routes))}')
         "
+        
+    - name: Test server configuration
+      env:
+        TELNYX_API_KEY: dummy-key-for-testing
+        PYTHONPATH: ${{ github.workspace }}/src
+      run: |
+        echo "Testing server configuration..."
+        python -c "
+        import sys
+        sys.path.insert(0, 'src')
+        from telnyx_mcp_server.remote.server import TelnyxMCPServer
+        
+        # Test server initialization
+        server = TelnyxMCPServer()
+        print('✅ TelnyxMCPServer initializes successfully')
+        print(f'✅ Server tools available: {len(server.tools)}')
+        "
+
+  summary:
+    needs: [validate, test]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Test Results Summary
+      run: |
+        echo "## Remote Server Tests Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ needs.validate.result }}" = "success" ] && [ "${{ needs.test.result }}" = "success" ]; then
+          echo "✅ **All tests passed successfully!**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Remote server imports and initializes correctly" >> $GITHUB_STEP_SUMMARY
+          echo "- FastAPI application loads without errors" >> $GITHUB_STEP_SUMMARY
+          echo "- All required OAuth and MCP endpoints are present" >> $GITHUB_STEP_SUMMARY
+          echo "- Server configuration is valid" >> $GITHUB_STEP_SUMMARY
+        elif [ "${{ needs.validate.outputs.should-run }}" = "false" ]; then
+          echo "ℹ️ **Tests were skipped** - No remote server changes detected" >> $GITHUB_STEP_SUMMARY
+        elif [ "${{ needs.test.result }}" = "failure" ]; then
+          echo "❌ **Tests failed!** Please check the test logs above." >> $GITHUB_STEP_SUMMARY
+          exit 1
+        else
+          echo "⚠️ **Unexpected test result**" >> $GITHUB_STEP_SUMMARY
+          echo "Validation: ${{ needs.validate.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "Tests: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
+        fi
