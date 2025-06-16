@@ -602,6 +602,7 @@ async def health_check():
         "status": "healthy",
         "service": "telnyx-mcp-server",
         "version": __version__,
+        "git_commit": os.getenv("GIT_COMMIT_HASH", "unknown"),
         "protocol_version": PROTOCOL_VERSION
     }
 

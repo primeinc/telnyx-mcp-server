@@ -93,5 +93,6 @@ jobs:
             {"name": "AZURE_TENANT_ID", "value": "${{ secrets.AZURE_TENANT_ID }}"},
             {"name": "AZURE_REDIRECT_URI", "value": "https://${{ secrets.AZURE_WEBAPP_NAME }}.azurewebsites.net/auth/callback"},
             {"name": "ENVIRONMENT", "value": "production"},
-            {"name": "LOG_LEVEL", "value": "INFO"}
+            {"name": "LOG_LEVEL", "value": "INFO"},
+            {"name": "GIT_COMMIT_HASH", "value": "${{ github.sha }}"}
           ]
