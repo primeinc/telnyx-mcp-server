@@ -51,7 +51,7 @@ resource web 'Microsoft.Web/sites@2022-03-01' = {
       minTlsVersion: '1.2'
       scmMinTlsVersion: '1.2'
       healthCheckPath: '/health'
-      appCommandLine: '/home/site/wwwroot/startup.sh'
+      appCommandLine: 'startup.sh'
       appSettings: [
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
