@@ -581,8 +581,14 @@ async def log_requests(request: Request, call_next):
 
 
 @app.get("/")
-async def root():
+async def root(request: Request):
     """Root endpoint with server information."""
+    logger.info("="*50)
+    logger.info("ROOT endpoint called")
+    logger.info(f"Request URL: {request.url}")
+    logger.info(f"All headers: {dict(request.headers)}")
+    logger.info("="*50)
+    
     base_url = os.getenv("BASE_URL", "https://app-web-3ky2b33hy2dpm.azurewebsites.net")
     return {
         "name": "Telnyx Remote MCP Server",
@@ -613,6 +619,12 @@ async def health_check():
 @app.get("/.well-known/oauth-protected-resource")
 async def oauth_protected_resource_metadata(request: Request):
     """OAuth 2.0 Protected Resource Metadata (RFC9728)."""
+    logger.info("="*50)
+    logger.info("OAUTH PROTECTED RESOURCE METADATA called")
+    logger.info(f"Request URL: {request.url}")
+    logger.info(f"All headers: {dict(request.headers)}")
+    logger.info("="*50)
+    
     # Get base URL from request, handling proxy headers
     forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()
     forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
@@ -624,7 +636,7 @@ async def oauth_protected_resource_metadata(request: Request):
         # Direct access
         base_url = str(request.base_url).rstrip('/')
     
-    return {
+    response = {
         "resource": f"{base_url}/mcp",  # Point to the MCP endpoint specifically
         "authorization_servers": [base_url],  # We are the authorization server
         "scopes_supported": ["openid", "profile", "email", "mcp:read", "mcp:write", "mcp:execute"],
@@ -634,6 +646,9 @@ async def oauth_protected_resource_metadata(request: Request):
         "resource_policy_uri": f"{base_url}/privacy",
         "resource_tos_uri": f"{base_url}/terms"
     }
+    
+    logger.info(f"Returning metadata: {json.dumps(response, indent=2)}")
+    return response
 
 
 @app.get("/.well-known/oauth-authorization-server")
@@ -829,11 +844,24 @@ async def authorize(
 @app.post("/token")
 async def token(request: Request):
     """OAuth 2.0 Token endpoint - exchanges MCP auth code for JWT token."""
+    logger.info("="*50)
+    logger.info("TOKEN endpoint called")
+    logger.info(f"Request URL: {request.url}")
+    logger.info(f"All headers: {dict(request.headers)}")
+    
     form_data = await request.form()
+    logger.info(f"Form data keys: {list(form_data.keys())}")
+    
     code = form_data.get("code")
     grant_type = form_data.get("grant_type")
     client_id = form_data.get("client_id")
     code_verifier = form_data.get("code_verifier")  # PKCE
+    
+    logger.info(f"grant_type: {grant_type}")
+    logger.info(f"client_id: {client_id}")
+    logger.info(f"code (first 20 chars): {code[:20] if code and len(code) >= 20 else code}")
+    logger.info(f"code_verifier present: {code_verifier is not None}")
+    logger.info("="*50)
     
     # Validate grant type
     if grant_type != "authorization_code":
@@ -919,8 +947,12 @@ async def token(request: Request):
         
         # Create JWT token using the stored user info and Azure token
         user_info = auth_code_data.user_info
+        logger.info(f"Creating JWT for user: {user_info}")
+        
         jwt_token = AuthService.create_jwt_token(user_info)
         
+        logger.info(f"JWT token created successfully")
+        logger.info(f"Token (first 50 chars): {jwt_token[:50]}...")
         logger.info(f"Issued JWT token for user: {user_info.get('mail', user_info.get('userPrincipalName'))}")
         
         # Get base URL for MCP endpoint discovery
@@ -1240,10 +1272,18 @@ async def mcp_endpoint(
     
     Authentication is required for all methods except initialize.
     """
-    # Log authentication header for debugging
+    # Comprehensive logging
+    logger.info("="*50)
+    logger.info("MCP POST endpoint called")
+    logger.info(f"Request URL: {request.url}")
+    logger.info(f"Request method: {request.method}")
+    logger.info(f"All headers: {dict(request.headers)}")
     auth_header = request.headers.get("authorization", "None")
-    logger.info(f"MCP endpoint called with Authorization header: {auth_header[:50] if auth_header != 'None' else 'None'}...")
-    logger.info(f"Current user from auth: {current_user.get('email') if current_user else 'None'}")
+    logger.info(f"Authorization header: {auth_header}")
+    logger.info(f"Current user from auth: {current_user}")
+    logger.info(f"Accept header: {request.headers.get('accept', 'None')}")
+    logger.info(f"Content-Type: {request.headers.get('content-type', 'None')}")
+    logger.info("="*50)
     
     # Get base URL first
     base_url = get_base_url_from_request(request)
@@ -1252,6 +1292,7 @@ async def mcp_endpoint(
     message = None
     try:
         body = await request.body()
+        logger.info(f"Request body: {body.decode('utf-8') if body else 'None'}")
         message = json.loads(body)
         
         # Determine if this request requires authentication
@@ -1380,6 +1421,18 @@ async def mcp_sse_stream(
     current_user: Optional[Dict[str, Any]] = Depends(optional_auth)
 ):
     """GET endpoint for server-initiated SSE stream."""
+    # Comprehensive logging
+    logger.info("="*50)
+    logger.info("MCP GET endpoint called")
+    logger.info(f"Request URL: {request.url}")
+    logger.info(f"Request method: {request.method}")
+    logger.info(f"All headers: {dict(request.headers)}")
+    auth_header = request.headers.get("authorization", "None")
+    logger.info(f"Authorization header: {auth_header}")
+    logger.info(f"Current user from auth: {current_user}")
+    logger.info(f"Accept header: {request.headers.get('accept', 'None')}")
+    logger.info("="*50)
+    
     # SSE streams also require authentication
     if not current_user:
         base_url = get_base_url_from_request(request)

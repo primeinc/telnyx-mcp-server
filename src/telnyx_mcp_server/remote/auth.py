@@ -179,19 +179,26 @@ async def optional_auth(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
 ) -> Optional[Dict[str, Any]]:
     """Optional authentication - returns user data if authenticated, None otherwise"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"optional_auth called - credentials present: {credentials is not None}")
+    
     if credentials:
         try:
             token = credentials.credentials
-            # Log token prefix for debugging
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.info(f"Received token (first 20 chars): {token[:20]}...")
+            logger.info(f"Received token (first 20 chars): {token[:20] if len(token) >= 20 else token}...")
+            logger.info(f"Token length: {len(token)}")
+            
             user_data = AuthService.decode_jwt_token(token)
-            logger.info(f"Token validated successfully for user: {user_data.get('email')}")
+            logger.info(f"Token validated successfully!")
+            logger.info(f"User data: {user_data}")
             return user_data
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Token validation failed: {str(e)}")
+            logger.error(f"Token validation failed: {type(e).__name__}: {str(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return None
+    else:
+        logger.info("No credentials provided")
     return None
