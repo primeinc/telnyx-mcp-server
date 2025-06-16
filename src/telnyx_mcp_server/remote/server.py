@@ -1231,6 +1231,11 @@ async def mcp_endpoint(
     
     Authentication is required for all methods except initialize.
     """
+    # Log authentication header for debugging
+    auth_header = request.headers.get("authorization", "None")
+    logger.info(f"MCP endpoint called with Authorization header: {auth_header[:50] if auth_header != 'None' else 'None'}...")
+    logger.info(f"Current user from auth: {current_user.get('email') if current_user else 'None'}")
+    
     # Get base URL first
     base_url = get_base_url_from_request(request)
     

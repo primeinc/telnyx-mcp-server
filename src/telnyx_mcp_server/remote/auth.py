@@ -182,8 +182,16 @@ async def optional_auth(
     if credentials:
         try:
             token = credentials.credentials
+            # Log token prefix for debugging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Received token (first 20 chars): {token[:20]}...")
             user_data = AuthService.decode_jwt_token(token)
+            logger.info(f"Token validated successfully for user: {user_data.get('email')}")
             return user_data
-        except:
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Token validation failed: {str(e)}")
             return None
     return None
