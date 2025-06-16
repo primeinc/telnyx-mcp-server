@@ -548,12 +548,15 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+# For development, allow all origins without credentials
+# In production, you'd want to restrict this
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,  # Can't use credentials with wildcard origin
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "mcp-session-id", "mcp-protocol-version"],
+    expose_headers=["mcp-session-id", "Link", "WWW-Authenticate"],
 )
 
 # Add request logging middleware
@@ -1223,6 +1226,8 @@ async def register(request: Request):
 
 
 # MCP Protocol Endpoints
+# OPTIONS handling removed - CORS middleware handles preflight requests
+
 @app.post("/mcp")
 async def mcp_endpoint(
     request: Request,
@@ -1257,7 +1262,7 @@ async def mcp_endpoint(
         # If auth is required but user is not authenticated, return 401
         if requires_auth and not current_user:
             headers = {
-                "WWW-Authenticate": 'Bearer realm="MCP Server"',
+                "WWW-Authenticate": f'Bearer realm="{base_url}", authorization_uri="{base_url}/.well-known/oauth-authorization-server"',
                 "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"'
             }
             
@@ -1349,6 +1354,7 @@ async def mcp_endpoint(
         if session_id:
             headers["mcp-session-id"] = session_id
             
+        # CORS headers handled by middleware
         return EventSourceResponse(event_generator(), headers=headers)
     else:
         # Return JSON response
@@ -1356,6 +1362,8 @@ async def mcp_endpoint(
         if session_id:
             headers["mcp-session-id"] = session_id
             
+        # CORS headers handled by middleware
+        
         return Response(
             content=json.dumps(response),
             media_type="application/json",
@@ -1373,8 +1381,8 @@ async def mcp_sse_stream(
     if not current_user:
         base_url = get_base_url_from_request(request)
         headers = {
-            "WWW-Authenticate": 'Bearer realm="MCP Server"',
-            "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"'
+            "WWW-Authenticate": f'Bearer realm="{base_url}", authorization_uri="{base_url}/.well-known/oauth-authorization-server"',
+            "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"',
         }
         return Response(
             content="Authentication required for SSE stream",
