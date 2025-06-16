@@ -581,14 +581,24 @@ async def log_requests(request: Request, call_next):
 
 
 @app.get("/")
-async def root(request: Request):
-    """Root endpoint with server information."""
+async def root(request: Request, current_user: Optional[Dict[str, Any]] = Depends(optional_auth)):
+    """Root endpoint - handles both server info and SSE streams based on Accept header."""
     logger.info("="*50)
-    logger.info("ROOT endpoint called")
+    logger.info("ROOT GET endpoint called")
     logger.info(f"Request URL: {request.url}")
     logger.info(f"All headers: {dict(request.headers)}")
+    logger.info(f"Current user: {current_user}")
+    logger.info(f"Accept header: {request.headers.get('accept', 'None')}")
     logger.info("="*50)
     
+    # Check if this is an SSE request
+    accept_header = request.headers.get("accept", "")
+    if "text/event-stream" in accept_header:
+        # This is Claude Desktop trying to establish an SSE connection
+        # Redirect to the MCP SSE endpoint
+        return await mcp_sse_stream(request, current_user)
+    
+    # Regular GET request - return server info
     base_url = os.getenv("BASE_URL", "https://app-web-3ky2b33hy2dpm.azurewebsites.net")
     return {
         "name": "Telnyx Remote MCP Server",
@@ -602,6 +612,19 @@ async def root(request: Request):
         },
         "tools_available": len(telnyx_mcp_server.tools)
     }
+
+
+@app.post("/")
+async def root_post(request: Request, current_user: Optional[Dict[str, Any]] = Depends(optional_auth)):
+    """POST endpoint at root - handles MCP protocol requests."""
+    logger.info("="*50)
+    logger.info("ROOT POST endpoint called - redirecting to MCP handler")
+    logger.info(f"Request URL: {request.url}")
+    logger.info(f"Current user: {current_user}")
+    logger.info("="*50)
+    
+    # Claude Desktop is trying to POST to root - handle it as MCP protocol
+    return await mcp_endpoint(request, current_user)
 
 
 @app.get("/health")
