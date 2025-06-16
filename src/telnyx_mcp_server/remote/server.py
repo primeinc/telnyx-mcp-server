@@ -553,10 +553,10 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,  # Can't use credentials with wildcard origin
+    allow_credentials=True,  # This is fine - doesn't affect Bearer tokens
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "mcp-session-id", "mcp-protocol-version"],
-    expose_headers=["mcp-session-id", "Link", "WWW-Authenticate"],
+    allow_headers=["*"],  # Allow all headers
+    expose_headers=["*"],  # Expose all headers
 )
 
 # Add request logging middleware
@@ -924,11 +924,25 @@ async def token(request: Request):
         
         logger.info(f"Issued JWT token for user: {user_info.get('mail', user_info.get('userPrincipalName'))}")
         
+        # Get base URL for MCP endpoint discovery
+        base_url = get_base_url_from_request(request)
+        
+        # Include MCP-specific discovery information in token response
         return {
             "access_token": jwt_token,
             "token_type": "Bearer",
             "expires_in": 86400,  # 24 hours in seconds
-            "scope": "openid profile email"
+            "scope": "openid profile email",
+            # MCP-specific extensions
+            "mcp": {
+                "endpoint": f"{base_url}/mcp",
+                "version": PROTOCOL_VERSION,
+                "capabilities": {
+                    "tools": True,
+                    "resources": True,
+                    "prompts": False
+                }
+            }
         }
         
     except Exception as e:
@@ -1262,7 +1276,7 @@ async def mcp_endpoint(
         # If auth is required but user is not authenticated, return 401
         if requires_auth and not current_user:
             headers = {
-                "WWW-Authenticate": f'Bearer realm="{base_url}", authorization_uri="{base_url}/.well-known/oauth-authorization-server"',
+                "WWW-Authenticate": 'Bearer realm="MCP Server"',
                 "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"'
             }
             
@@ -1381,8 +1395,8 @@ async def mcp_sse_stream(
     if not current_user:
         base_url = get_base_url_from_request(request)
         headers = {
-            "WWW-Authenticate": f'Bearer realm="{base_url}", authorization_uri="{base_url}/.well-known/oauth-authorization-server"',
-            "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"',
+            "WWW-Authenticate": 'Bearer realm="MCP Server"',
+            "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"'
         }
         return Response(
             content="Authentication required for SSE stream",
