@@ -625,15 +625,14 @@ async def oauth_protected_resource_metadata(request: Request):
         base_url = str(request.base_url).rstrip('/')
     
     return {
-        "resource": base_url,
-        "authorization_servers": [base_url],
-        "scopes_supported": ["openid", "profile", "email"],
+        "resource": f"{base_url}/mcp",  # Point to the MCP endpoint specifically
+        "authorization_servers": [base_url],  # We are the authorization server
+        "scopes_supported": ["openid", "profile", "email", "mcp:read", "mcp:write", "mcp:execute"],
         "bearer_methods_supported": ["header"],
         "resource_signing_alg_values_supported": ["HS256"],  # Changed to match our JWT signing
         "resource_documentation": f"{base_url}/docs",
         "resource_policy_uri": f"{base_url}/privacy",
-        "resource_tos_uri": f"{base_url}/terms",
-        "mcp_endpoints": [f"{base_url}/mcp"]  # Add MCP endpoint discovery
+        "resource_tos_uri": f"{base_url}/terms"
     }
 
 
@@ -664,7 +663,7 @@ async def oauth_metadata(request: Request):
         "grant_types_supported": ["authorization_code"],
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["HS256"],
-        "scopes_supported": ["openid", "profile", "email", "User.Read"],
+        "scopes_supported": ["openid", "profile", "email", "User.Read", "mcp:read", "mcp:write", "mcp:execute"],
         "token_endpoint_auth_methods_supported": ["none"],
         "code_challenge_methods_supported": ["S256"],
         "claims_supported": ["sub", "email", "name", "exp", "iat"],
@@ -692,7 +691,7 @@ async def mcp_oauth_metadata(request: Request):
         "token_endpoint": f"{base_url}/token",
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code"],
-        "scopes_supported": ["openid", "profile", "email"],
+        "scopes_supported": ["openid", "profile", "email", "mcp:read", "mcp:write", "mcp:execute"],
         "code_challenge_methods_supported": ["S256"]
     }
 
@@ -723,7 +722,7 @@ async def openid_configuration(request: Request):
         "grant_types_supported": ["authorization_code"],
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["HS256"],
-        "scopes_supported": ["openid", "profile", "email"],
+        "scopes_supported": ["openid", "profile", "email", "mcp:read", "mcp:write", "mcp:execute"],
         "token_endpoint_auth_methods_supported": ["none"],
         "code_challenge_methods_supported": ["S256"],
         "claims_supported": ["sub", "email", "name", "exp", "iat"]
@@ -927,22 +926,12 @@ async def token(request: Request):
         # Get base URL for MCP endpoint discovery
         base_url = get_base_url_from_request(request)
         
-        # Include MCP-specific discovery information in token response
+        # Standard OAuth token response
         return {
             "access_token": jwt_token,
             "token_type": "Bearer",
             "expires_in": 86400,  # 24 hours in seconds
-            "scope": "openid profile email",
-            # MCP-specific extensions
-            "mcp": {
-                "endpoint": f"{base_url}/mcp",
-                "version": PROTOCOL_VERSION,
-                "capabilities": {
-                    "tools": True,
-                    "resources": True,
-                    "prompts": False
-                }
-            }
+            "scope": "openid profile email mcp:read mcp:write mcp:execute"
         }
         
     except Exception as e:
@@ -1276,7 +1265,7 @@ async def mcp_endpoint(
         # If auth is required but user is not authenticated, return 401
         if requires_auth and not current_user:
             headers = {
-                "WWW-Authenticate": 'Bearer realm="MCP Server"',
+                "WWW-Authenticate": f'Bearer realm="MCP Server", resource_metadata_uri="{base_url}/.well-known/oauth-protected-resource"',
                 "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"'
             }
             
@@ -1395,7 +1384,7 @@ async def mcp_sse_stream(
     if not current_user:
         base_url = get_base_url_from_request(request)
         headers = {
-            "WWW-Authenticate": 'Bearer realm="MCP Server"',
+            "WWW-Authenticate": f'Bearer realm="MCP Server", resource_metadata_uri="{base_url}/.well-known/oauth-protected-resource"',
             "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"'
         }
         return Response(
