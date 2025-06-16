@@ -2,7 +2,7 @@ name: Azure Deployment
 
 # Configure to only run on pull_request targeting main branch
 # This prevents double deployments from both push and pull_request events
-on:
+"on":
   pull_request:
     branches: [main]
     types: [opened, synchronize, closed]
