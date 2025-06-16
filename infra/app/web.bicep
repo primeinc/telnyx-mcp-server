@@ -117,6 +117,10 @@ resource web 'Microsoft.Web/sites@2022-03-01' = {
           name: 'WEBSITES_PORT'
           value: '8000'
         }
+        {
+          name: 'WEBSITE_RUN_FROM_PACKAGE'
+          value: '0'
+        }
       ]
     }
   }
