@@ -3,6 +3,7 @@
 from fastapi import FastAPI, HTTPException, Request, Depends, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, RedirectResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sse_starlette.sse import EventSourceResponse
 from typing import Any, Dict, Optional, List, Union
 import logging
@@ -27,15 +28,33 @@ from .auth import (
 )
 from .auth_store import auth_store
 
+# Import new components
+from .structured_logging import (
+    configure_structlog, get_logger, TraceIdMiddleware, 
+    set_trace_id, get_trace_id
+)
+from .schema_fixer import fix_tool_schema, validate_tool_arguments
+
 # Import existing Telnyx MCP components
 from ..mcp import mcp
 from ..config import settings
-from ..utils.logger import get_logger
+from ..utils.logger import get_logger as get_standard_logger
 
 # Load environment variables
 load_dotenv()
 
-# Configure logging
+# Configure structured logging
+log_level = os.getenv("LOG_LEVEL", "INFO")
+enable_pii_redaction = os.getenv("ENABLE_PII_REDACTION", "true").lower() in ("true", "1", "yes")
+application_insights_key = os.getenv("APPLICATION_INSIGHTS_KEY")
+
+configure_structlog(
+    log_level=log_level,
+    enable_pii_redaction=enable_pii_redaction,
+    application_insights_key=application_insights_key
+)
+
+# Use structured logger
 logger = get_logger(__name__)
 
 # Version information
@@ -158,135 +177,8 @@ class TelnyxMCPServer:
         }
     
     def _transform_tool_schema(self, tool: Dict[str, Any]) -> Dict[str, Any]:
-        """Transform tool schema to flatten nested request objects."""
-        # Create a copy of the tool
-        transformed = tool.copy()
-        
-        # Check if this tool has the nested request pattern
-        input_schema = tool.get("inputSchema", {})
-        properties = input_schema.get("properties", {})
-        
-        if len(properties) == 1 and "request" in properties:
-            # This is a nested schema - extract parameters from docstring
-            docstring = tool.get("description", "")
-            flattened_schema = self._extract_parameters_from_docstring(docstring)
-            
-            # Override with known schemas for common tools
-            if tool["name"] == "send_message":
-                flattened_schema = {
-                    "type": "object",
-                    "properties": {
-                        "from": {
-                            "type": "string",
-                            "description": "Sending address (phone number, alphanumeric sender ID, or short code)"
-                        },
-                        "to": {
-                            "type": "string",
-                            "description": "Receiving address(es)"
-                        },
-                        "text": {
-                            "type": "string",
-                            "description": "Message text"
-                        },
-                        "messaging_profile_id": {
-                            "type": "string",
-                            "description": "Optional. Messaging profile ID"
-                        },
-                        "subject": {
-                            "type": "string",
-                            "description": "Optional. Message subject"
-                        },
-                        "media_urls": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Optional. List of media URLs"
-                        },
-                        "webhook_url": {
-                            "type": "string",
-                            "description": "Optional. Webhook URL"
-                        },
-                        "type": {
-                            "type": "string",
-                            "enum": ["SMS", "MMS"],
-                            "description": "Optional. The protocol for sending the message"
-                        }
-                    },
-                    "required": ["from", "to", "text"]
-                }
-            elif tool["name"] == "get_message":
-                flattened_schema = {
-                    "type": "object",
-                    "properties": {
-                        "message_id": {
-                            "type": "string",
-                            "description": "The ID of the message to retrieve"
-                        }
-                    },
-                    "required": ["message_id"]
-                }
-            elif tool["name"] == "list_phone_numbers":
-                flattened_schema = {
-                    "type": "object",
-                    "properties": {
-                        "page": {
-                            "type": "integer",
-                            "description": "Page number",
-                            "default": 1
-                        },
-                        "page_size": {
-                            "type": "integer",
-                            "description": "Page size",
-                            "default": 20
-                        },
-                        "filter_phone_number": {
-                            "type": "string",
-                            "description": "Filter by phone number"
-                        },
-                        "filter_status": {
-                            "type": "string",
-                            "description": "Filter by status"
-                        },
-                        "filter_voice_enabled": {
-                            "type": "boolean",
-                            "description": "Filter by voice enabled"
-                        }
-                    },
-                    "required": []
-                }
-            elif tool["name"] == "get_assistant":
-                flattened_schema = {
-                    "type": "object",
-                    "properties": {
-                        "assistant_id": {
-                            "type": "string",
-                            "description": "Assistant ID"
-                        }
-                    },
-                    "required": ["assistant_id"]
-                }
-            elif tool["name"] == "start_assistant_call":
-                flattened_schema = {
-                    "type": "object",
-                    "properties": {
-                        "assistant_id": {
-                            "type": "string",
-                            "description": "ID of the assistant to use for the call"
-                        },
-                        "to": {
-                            "type": "string",
-                            "description": "Destination phone number to call"
-                        },
-                        "from": {
-                            "type": "string",
-                            "description": "Source phone number to call from (must be a number on your Telnyx account)"
-                        }
-                    },
-                    "required": ["assistant_id", "to", "from"]
-                }
-            
-            transformed["inputSchema"] = flattened_schema
-        
-        return transformed
+        """Transform tool schema using Pydantic models when available."""
+        return fix_tool_schema(tool)
     
     async def handle_initialize(self, request_id: Any, params: Dict[str, Any], session_id: str = None, base_url: str = None) -> Dict[str, Any]:
         """Handle MCP initialize request."""
@@ -373,6 +265,14 @@ class TelnyxMCPServer:
             }
         
         try:
+            # Validate arguments if we have a schema
+            try:
+                validated_args = validate_tool_arguments(tool_name, arguments)
+                logger.info(f"Validated arguments for tool {tool_name}", extra={"tool": tool_name, "args_count": len(arguments)})
+            except Exception as validation_error:
+                logger.warning(f"Argument validation failed for {tool_name}: {validation_error}", extra={"tool": tool_name, "error": str(validation_error)})
+                validated_args = arguments  # Use original arguments if validation fails
+            
             # Transform arguments if needed
             tool_schema = self.tools[tool_name].get("inputSchema", {})
             properties = tool_schema.get("properties", {})
@@ -380,10 +280,10 @@ class TelnyxMCPServer:
             # If the tool expects a nested request object, wrap the arguments
             if len(properties) == 1 and "request" in properties:
                 # This tool expects arguments wrapped in a request object
-                transformed_args = {"request": arguments}
+                transformed_args = {"request": validated_args}
             else:
                 # Tool has been flattened or uses direct parameters
-                transformed_args = arguments
+                transformed_args = validated_args
             
             # Call the tool through the existing MCP instance
             result = await mcp.call_tool(tool_name, transformed_args)
@@ -396,6 +296,8 @@ class TelnyxMCPServer:
             else:
                 content = [{"type": "text", "text": str(result)}]
             
+            logger.info(f"Tool {tool_name} executed successfully", extra={"tool": tool_name, "success": True})
+            
             return {
                 "jsonrpc": "2.0",
                 "id": request_id,
@@ -405,7 +307,7 @@ class TelnyxMCPServer:
             }
             
         except Exception as e:
-            logger.error(f"Tool execution error: {e}")
+            logger.error(f"Tool execution error for {tool_name}: {e}", extra={"tool": tool_name, "error": str(e)}, exc_info=True)
             return {
                 "jsonrpc": "2.0",
                 "id": request_id,
@@ -547,35 +449,101 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
-# For development, allow all origins without credentials
-# In production, you'd want to restrict this
+# Configure CORS with security considerations
+allowed_origins = os.getenv("MCP_ALLOWED_ORIGINS", "*").split(",")
+if allowed_origins == ["*"]:
+    logger.warning("CORS configured to allow all origins - this should not be used in production")
+
+# Add structured logging middleware
+app.add_middleware(TraceIdMiddleware)
+
+# Add CORS middleware with proper security
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,  # This is fine - doesn't affect Bearer tokens
+    allow_origins=allowed_origins,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],  # Allow all headers
-    expose_headers=["*"],  # Expose all headers
+    allow_headers=["*"],
+    expose_headers=["x-trace-id", "mcp-session-id"],
 )
+
+# Add security headers middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Add security headers to responses."""
+    response = await call_next(request)
+    
+    # Add security headers
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    
+    return response
+
+# Add CORS violation logging middleware
+@app.middleware("http")
+async def log_cors_violations(request: Request, call_next):
+    """Log potential CORS violations."""
+    origin = request.headers.get("origin")
+    
+    if origin and origin not in allowed_origins and "*" not in allowed_origins:
+        logger.warning(
+            "CORS violation detected",
+            extra={
+                "origin": origin,
+                "allowed_origins": allowed_origins,
+                "url": str(request.url),
+                "method": request.method,
+                "user_agent": request.headers.get("user-agent", "unknown")
+            }
+        )
+    
+    response = await call_next(request)
+    return response
 
 # Add request logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log all incoming HTTP requests."""
-    start_time = datetime.now()
+    """Log all incoming HTTP requests with structured logging."""
+    start_time = time.time()
     
-    # Log request details
-    logger.info(f"HTTP Request: {request.method} {request.url.path}")
-    logger.info(f"Headers: {dict(request.headers)}")
-    logger.info(f"Query params: {dict(request.query_params)}")
+    # Generate or get trace ID
+    trace_id = get_trace_id()
+    if not trace_id:
+        trace_id = str(secrets.token_hex(8))
+        set_trace_id(trace_id)
+    
+    # Log request details (PII will be redacted by processor)
+    logger.info(
+        "HTTP request started",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "query_params": dict(request.query_params),
+            "headers": dict(request.headers),
+            "client_ip": request.client.host if request.client else "unknown",
+            "user_agent": request.headers.get("user-agent", "unknown")
+        }
+    )
     
     # Process request
     response = await call_next(request)
     
     # Log response details
-    process_time = (datetime.now() - start_time).total_seconds()
-    logger.info(f"HTTP Response: {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time}s")
+    process_time = time.time() - start_time
+    logger.info(
+        "HTTP request completed",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "process_time": process_time,
+            "response_size": response.headers.get("content-length", "unknown")
+        }
+    )
     
     return response
 
@@ -629,14 +597,54 @@ async def root_post(request: Request, current_user: Optional[Dict[str, Any]] = D
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {
+    """Health check endpoint with readiness probe functionality."""
+    health_data = {
         "status": "healthy",
         "service": "telnyx-mcp-server",
         "version": __version__,
         "git_commit": os.getenv("GIT_COMMIT_HASH", "unknown"),
-        "protocol_version": PROTOCOL_VERSION
+        "protocol_version": PROTOCOL_VERSION,
+        "timestamp": time.time()
     }
+    
+    # Check auth store health
+    try:
+        if hasattr(auth_store, 'health_check'):
+            auth_health = await auth_store.health_check()
+            health_data["auth_store"] = auth_health
+        else:
+            health_data["auth_store"] = {"type": "in_memory", "status": "healthy"}
+    except Exception as e:
+        logger.error(f"Auth store health check failed: {e}")
+        health_data["auth_store"] = {"status": "unhealthy", "error": str(e)}
+    
+    # Check MCP tools initialization
+    try:
+        await telnyx_mcp_server.initialize_tools()
+        health_data["mcp_tools"] = {
+            "status": "healthy",
+            "tools_count": len(telnyx_mcp_server.tools)
+        }
+    except Exception as e:
+        logger.error(f"MCP tools health check failed: {e}")
+        health_data["mcp_tools"] = {"status": "unhealthy", "error": str(e)}
+    
+    # Determine overall health
+    is_healthy = all(
+        component.get("status") == "healthy" 
+        for component in [health_data.get("auth_store", {}), health_data.get("mcp_tools", {})]
+        if isinstance(component, dict)
+    )
+    
+    if not is_healthy:
+        health_data["status"] = "unhealthy"
+        return Response(
+            content=json.dumps(health_data),
+            status_code=503,
+            media_type="application/json"
+        )
+    
+    return health_data
 
 
 @app.get("/.well-known/oauth-protected-resource")

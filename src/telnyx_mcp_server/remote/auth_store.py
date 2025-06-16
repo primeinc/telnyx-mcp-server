@@ -1,8 +1,9 @@
-"""In-memory store for OAuth authorization codes and sessions."""
+"""Store for OAuth authorization codes and sessions with Redis and in-memory options."""
 
 import secrets
 import time
-from typing import Dict, Optional, Any
+import os
+from typing import Dict, Optional, Any, Union
 from dataclasses import dataclass, field
 import logging
 
@@ -246,4 +247,29 @@ class AuthStore:
 
 
 # Global instance for the application
-auth_store = AuthStore()
+def create_auth_store() -> Union['AsyncRedisAuthStore', 'AuthStore']:
+    """Create appropriate auth store based on configuration."""
+    # Check if Redis should be used
+    redis_url = os.getenv("REDIS_URL")
+    use_redis = os.getenv("USE_REDIS", "true").lower() in ("true", "1", "yes")
+    environment = os.getenv("ENVIRONMENT", "development")
+    
+    # In development/test, prefer in-memory unless explicitly configured
+    if environment in ("development", "test") and not redis_url:
+        logger.info("Using in-memory auth store for development/test environment")
+        return AuthStore()
+    
+    # Try to use Redis if available and configured
+    if use_redis:
+        try:
+            from .redis_auth_store import AsyncRedisAuthStore
+            logger.info("Using Redis-backed auth store")
+            return AsyncRedisAuthStore(redis_url=redis_url)
+        except ImportError:
+            logger.warning("Redis auth store requested but dependencies not available, falling back to in-memory")
+            return AuthStore()
+    
+    logger.info("Using in-memory auth store")
+    return AuthStore()
+
+auth_store = create_auth_store()

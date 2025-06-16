@@ -93,12 +93,53 @@ jobs:
             {"name": "AZURE_REDIRECT_URI", "value": "https://${{ secrets.AZURE_WEBAPP_NAME }}.azurewebsites.net/auth/callback"},
             {"name": "ENVIRONMENT", "value": "production"},
             {"name": "LOG_LEVEL", "value": "INFO"},
+            {"name": "ENABLE_PII_REDACTION", "value": "true"},
+            {"name": "MCP_ALLOWED_ORIGINS", "value": "https://claude.ai,https://chat.anthropic.com"},
+            {"name": "REDIS_URL", "value": "${{ secrets.REDIS_URL }}"},
+            {"name": "USE_REDIS", "value": "true"},
+            {"name": "APPLICATION_INSIGHTS_KEY", "value": "${{ secrets.APPLICATION_INSIGHTS_KEY }}"},
             {"name": "GIT_COMMIT_HASH", "value": "${{ github.sha }}"},
+            {"name": "WEBSITE_RUN_FROM_PACKAGE", "value": "1"},
             {"name": "WEBSITES_CONTAINER_START_TIME_LIMIT", "value": "1800"},
             {"name": "WEBSITES_ENABLE_APP_SERVICE_STORAGE", "value": "false"},
             {"name": "WEBSITE_WEBDEPLOY_USE_SCM", "value": "true"}
           ]
         general-settings-json: |
           {
-            "appCommandLine": "gunicorn -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --chdir src --access-logfile - --error-logfile - --log-level debug telnyx_mcp_server.remote.server:app"
+            "appCommandLine": "gunicorn -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --chdir src --access-logfile - --error-logfile - --log-level info telnyx_mcp_server.remote.server:app",
+            "linuxFxVersion": "PYTHON|3.11"
           }
+    
+    - name: Create deployment logs directory
+      run: |
+        mkdir -p .github/actions/deploy-logs
+        
+    - name: Save deployment logs
+      run: |
+        echo "Deployment completed at $(date)" > .github/actions/deploy-logs/deploy-${{ github.sha }}.log
+        echo "App URL: ${{ steps.deploy-to-webapp.outputs.webapp-url }}" >> .github/actions/deploy-logs/deploy-${{ github.sha }}.log
+        echo "Git Commit: ${{ github.sha }}" >> .github/actions/deploy-logs/deploy-${{ github.sha }}.log
+        echo "Deployed by: ${{ github.actor }}" >> .github/actions/deploy-logs/deploy-${{ github.sha }}.log
+        echo "Workflow run: ${{ github.run_id }}" >> .github/actions/deploy-logs/deploy-${{ github.sha }}.log
+        
+    - name: Upload deployment logs
+      uses: actions/upload-artifact@v4
+      with:
+        name: deployment-logs-${{ github.sha }}
+        path: .github/actions/deploy-logs/
+        retention-days: 30
+        
+    - name: Test deployed application
+      run: |
+        echo "Testing deployed application at ${{ steps.deploy-to-webapp.outputs.webapp-url }}"
+        
+        # Test health endpoint
+        curl -f "${{ steps.deploy-to-webapp.outputs.webapp-url }}/health" | jq .
+        
+        # Test OAuth metadata
+        curl -f "${{ steps.deploy-to-webapp.outputs.webapp-url }}/.well-known/oauth-authorization-server" | jq .
+        
+        # Test MCP metadata  
+        curl -f "${{ steps.deploy-to-webapp.outputs.webapp-url }}/.well-known/mcp-oauth-metadata" | jq .
+        
+        echo "Basic deployment tests passed"
