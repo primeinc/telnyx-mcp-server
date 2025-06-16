@@ -78,7 +78,6 @@ jobs:
       with:
         app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
         slot-name: 'production'
-        startup-command: 'gunicorn -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --chdir src --access-logfile - --error-logfile - --log-level debug telnyx_mcp_server.remote.server:app'
         
     - name: Configure App Settings
       uses: azure/appservice-settings@v1
@@ -96,5 +95,10 @@ jobs:
             {"name": "LOG_LEVEL", "value": "INFO"},
             {"name": "GIT_COMMIT_HASH", "value": "${{ github.sha }}"},
             {"name": "WEBSITES_CONTAINER_START_TIME_LIMIT", "value": "1800"},
-            {"name": "WEBSITES_ENABLE_APP_SERVICE_STORAGE", "value": "false"}
+            {"name": "WEBSITES_ENABLE_APP_SERVICE_STORAGE", "value": "false"},
+            {"name": "WEBSITE_WEBDEPLOY_USE_SCM", "value": "true"}
           ]
+        general-settings-json: |
+          {
+            "appCommandLine": "gunicorn -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --chdir src --access-logfile - --error-logfile - --log-level debug telnyx_mcp_server.remote.server:app"
+          }
