@@ -39,7 +39,7 @@ load_dotenv()
 logger = get_logger(__name__)
 
 # Version information
-__version__ = "0.3.3"
+__version__ = "0.3.4"
 PROTOCOL_VERSION = "2025-03-26"
 
 
@@ -652,7 +652,9 @@ async def oauth_metadata(request: Request):
         "token_endpoint": f"{base_url}/token",
         "userinfo_endpoint": f"{base_url}/userinfo",
         "registration_endpoint": f"{base_url}/register",
-        "jwks_uri": f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/discovery/v2.0/keys" if AZURE_TENANT_ID else None,
+        # Note: We use HS256 for JWT signing, not RS256 from Azure
+        # Remove jwks_uri to avoid confusion since we don't publish our symmetric key
+        # "jwks_uri": f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/discovery/v2.0/keys" if AZURE_TENANT_ID else None,
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code"],
         "subject_types_supported": ["public"],
@@ -709,7 +711,9 @@ async def openid_configuration(request: Request):
         "authorization_endpoint": f"{base_url}/authorize",
         "token_endpoint": f"{base_url}/token",
         "userinfo_endpoint": f"{base_url}/userinfo",
-        "jwks_uri": f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/discovery/v2.0/keys" if AZURE_TENANT_ID else None,
+        # Note: We use HS256 for JWT signing, not RS256 from Azure
+        # Remove jwks_uri to avoid confusion since we don't publish our symmetric key
+        # "jwks_uri": f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/discovery/v2.0/keys" if AZURE_TENANT_ID else None,
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code"],
         "subject_types_supported": ["public"],
@@ -1224,44 +1228,59 @@ async def mcp_endpoint(
 ):
     """MCP endpoint implementing Streamable HTTP transport.
     
-    Note: Authentication is optional to allow for OAuth discovery flow.
+    Authentication is required for all methods except initialize.
     """
-    # For methods that require auth, return 401 with proper WWW-Authenticate header
-    if not current_user:
-        try:
-            body = await request.body()
-            message = json.loads(body)
+    # Get base URL first
+    base_url = get_base_url_from_request(request)
+    
+    # Parse the request body first to check method
+    try:
+        body = await request.body()
+        message = json.loads(body)
+        
+        # Determine if this request requires authentication
+        requires_auth = True
+        if isinstance(message, dict):
+            method = message.get("method", "")
+            # Only initialize and its notification are allowed without auth
+            if method in ["initialize", "notifications/initialized"]:
+                requires_auth = False
+        
+        # If auth is required but user is not authenticated, return 401
+        if requires_auth and not current_user:
+            headers = {
+                "WWW-Authenticate": 'Bearer realm="MCP Server"',
+                "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"'
+            }
             
-            # Allow initialize and metadata discovery without auth
+            # Determine response ID for error
+            response_id = None
             if isinstance(message, dict):
-                method = message.get("method")
-                if method not in ["initialize", "notifications/initialized"]:
-                    # Other methods require authentication
-                    base_url = get_base_url_from_request(request)
-                    
-                    headers = {
-                        "WWW-Authenticate": 'Bearer realm="MCP Server"',
-                        "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"'
+                response_id = message.get("id")
+            
+            return Response(
+                content=json.dumps({
+                    "jsonrpc": "2.0",
+                    "id": response_id,
+                    "error": {
+                        "code": -32603,
+                        "message": "Authentication required",
+                        "data": {
+                            "oauth_url": f"{base_url}/.well-known/oauth-authorization-server"
+                        }
                     }
-                    return Response(
-                        content=json.dumps({
-                            "jsonrpc": "2.0",
-                            "id": message.get("id"),
-                            "error": {
-                                "code": -32603,
-                                "message": "Authentication required"
-                            }
-                        }),
-                        status_code=401,
-                        headers=headers,
-                        media_type="application/json"
-                    )
-            
-            # Reset body for processing
-            request._body = body
-            
-        except json.JSONDecodeError:
-            pass  # Will be handled below
+                }),
+                status_code=401,
+                headers=headers,
+                media_type="application/json"
+            )
+        
+        # Reset body for further processing
+        request._body = body
+        
+    except json.JSONDecodeError:
+        # Let it be handled by the normal error flow below
+        pass
     # Check Accept header
     accept_header = request.headers.get("accept", "application/json")
     prefers_sse = "text/event-stream" in accept_header
