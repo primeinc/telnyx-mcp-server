@@ -2,6 +2,8 @@
 
 Official Telnyx Model Context Protocol (MCP) Server that enables interaction with powerful telephony, messaging, and AI assistant APIs. This server allows MCP clients like Claude Desktop, Claude.ai, Cursor, Windsurf, OpenAI Agents and others to manage phone numbers, send messages, make calls, and create AI assistants.
 
+Built using the official [modelcontextprotocol/python-sdk](https://github.com/modelcontextprotocol/python-sdk) for robust MCP protocol compliance and lifecycle management.
+
 ## Deployment Options
 
 This server supports two deployment modes:

@@ -1,4 +1,4 @@
-"""Simple MCP server using FastMCP framework with STDIO transport."""
+"""Simple MCP server using official MCP SDK with STDIO transport."""
 
 import os
 from typing import (  # Added Sequence
@@ -10,18 +10,8 @@ from typing import (  # Added Sequence
 )
 
 from dotenv import load_dotenv
-from fastmcp import FastMCP
-
-# MCPTool is defined in mcp.types, but often exposed via fastmcp or mcp.server
-# For clarity, let's try importing directly if fastmcp doesn't re-export it well.
-try:
-    from fastmcp import MCPTool
-except ImportError:
-    from mcp.types import (
-        Tool as MCPTool,  # Fallback if not in fastmcp directly
-    )
-
-from mcp.types import EmbeddedResource, ImageContent, TextContent
+from mcp.server import FastMCP
+from mcp.types import EmbeddedResource, ImageContent, TextContent, Tool as MCPTool
 
 from .telnyx.client import TelnyxClient  # Assuming this path is correct
 from .utils.logger import get_logger  # Assuming this path is correct
@@ -51,17 +41,20 @@ class FilterableFastMCP(FastMCP):
         # Note: The original _original_list_tools_handler and _filtered_list_tools etc. are removed
         # as the filtering is now done by overriding list_tools and call_tool directly.
 
-    def set_enabled_tools(self, tool_names: List[str]) -> None:
+    def set_enabled_tools(self, tool_names: Optional[List[str]]) -> None:
         """
         Set specific tools to enable. All other tools will be disabled.
 
         Args:
-            tool_names: List of tool names to enable
+            tool_names: List of tool names to enable, or None to enable all tools
         """
         self._enabled_tools = tool_names
-        logger.info(
-            f"Tool filtering enabled. Available tools: {', '.join(tool_names)}"
-        )
+        if tool_names is not None:
+            logger.info(
+                f"Tool filtering enabled. Available tools: {', '.join(tool_names)}"
+            )
+        else:
+            logger.info("Tool filtering disabled. All tools are available.")
 
     def set_excluded_tools(self, tool_names: List[str]) -> None:
         """
@@ -71,9 +64,12 @@ class FilterableFastMCP(FastMCP):
             tool_names: List of tool names to exclude
         """
         self._excluded_tools = tool_names
-        logger.info(
-            f"Tool exclusion enabled. Excluded tools: {', '.join(tool_names)}"
-        )
+        if tool_names:
+            logger.info(
+                f"Tool exclusion enabled. Excluded tools: {', '.join(tool_names)}"
+            )
+        else:
+            logger.info("Tool exclusion disabled.")
 
     async def list_tools(
         self,
