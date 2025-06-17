@@ -185,25 +185,25 @@ async def list_all_tools() -> None:
     """List all available tools and exit."""
 
     # Create an instance of the MCP server to list the tools
-    tools_dict = await mcp.get_tools()
+    tools_list = await mcp.list_tools()
 
-    # Sort and print the tools
-    tools = sorted(tools_dict.items(), key=lambda x: x[0])
+    # Sort tools by name
+    tools_list.sort(key=lambda x: x.name)
 
     print("\nAvailable MCP Tools:")
     print("===================")
-    for name, tool in tools:
+    for tool in tools_list:
         description = (
             tool.description if tool.description else "No description"
         )
-        print(f"- {name}: {description}")
+        print(f"- {tool.name}: {description}")
     print(
         "\nUse --tools to specify a comma-separated list of tools to enable."
     )
     print(
         "Use --exclude-tools to specify a comma-separated list of tools to disable."
     )
-    print(f"\nTotal tools: {len(tools)}")
+    print(f"\nTotal tools: {len(tools_list)}")
 
 
 def setup_webhook_server(args: argparse.Namespace) -> None:
