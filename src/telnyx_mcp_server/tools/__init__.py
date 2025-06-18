@@ -62,6 +62,9 @@ from .secrets import (
 # Import webhook tool functions
 from .webhooks import get_webhook_events
 
+# Import demonstration tools using official SDK
+from .demo import echo_message, server_info
+
 __all__ = [
     # Assistant tools
     "create_assistant",
@@ -123,4 +126,7 @@ __all__ = [
     "list_integration_secrets",
     # Webhook tools
     "get_webhook_events",
+    # Demo tools (official SDK)
+    "echo_message",
+    "server_info",
 ]
