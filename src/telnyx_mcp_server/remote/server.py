@@ -87,6 +87,8 @@ class TelnyxMCPServer:
 
         try:
             # Import all Telnyx tools to ensure they're registered with MCP
+            # Import tools module to trigger tool registration
+            from .. import tools  # noqa: F401
 
             # Get the list of tools from MCP
             tools_list = await mcp.list_tools()

@@ -18,6 +18,7 @@ except ImportError:
     JSONRenderer = None
     STRUCTLOG_AVAILABLE = False
 
+
 # Context variable for trace ID tracking
 trace_id_context: ContextVar[Optional[str]] = ContextVar(
     "trace_id", default=None

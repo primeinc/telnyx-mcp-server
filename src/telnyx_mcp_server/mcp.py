@@ -10,18 +10,13 @@ from typing import (  # Added Sequence
 )
 
 from dotenv import load_dotenv
-from fastmcp import FastMCP
-
-# MCPTool is defined in mcp.types, but often exposed via fastmcp or mcp.server
-# For clarity, let's try importing directly if fastmcp doesn't re-export it well.
-try:
-    from fastmcp import MCPTool
-except ImportError:
-    from mcp.types import (
-        Tool as MCPTool,  # Fallback if not in fastmcp directly
-    )
-
-from mcp.types import EmbeddedResource, ImageContent, TextContent
+from mcp.server.fastmcp import FastMCP
+from mcp.types import (
+    EmbeddedResource,
+    ImageContent,
+    TextContent,
+    Tool as MCPTool,
+)
 
 from .telnyx.client import TelnyxClient  # Assuming this path is correct
 from .utils.logger import get_logger  # Assuming this path is correct
@@ -38,8 +33,8 @@ if not api_key:
     raise ValueError("TELNYX_API_KEY environment variable must be set")
 
 
-class FilterableFastMCP(FastMCP):
-    """Extended FastMCP class that supports tool filtering."""
+class FilterableOfficialMCP(FastMCP):
+    """Extended official MCP SDK class that supports tool filtering."""
 
     def __init__(self, *args, **kwargs):
         # Call super().__init__() first. This will run FastMCP's _setup_handlers,
@@ -142,7 +137,7 @@ class FilterableFastMCP(FastMCP):
 
 
 # Create a single shared MCP instance with filtering support
-mcp = FilterableFastMCP("Telnyx MCP")
+mcp = FilterableOfficialMCP("Telnyx MCP")
 
 # Initialize Telnyx client with API key from environment
 telnyx_client = TelnyxClient(api_key=api_key)

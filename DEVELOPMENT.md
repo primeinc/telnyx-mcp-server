@@ -2,52 +2,27 @@
 
 This guide covers the development workflow for the Telnyx MCP Server using [uv](https://docs.astral.sh/uv/).
 
+> **Note**: For installation and basic usage instructions, see the [README](README.md). This guide focuses on development-specific workflows.
+
 ## Table of Contents
 
-- [Prerequisites](#prerequisites)
-- [Getting Started](#getting-started)
+- [Development Setup](#development-setup)
 - [Project Structure](#project-structure)
 - [Development Workflow](#development-workflow)
 - [Testing](#testing)
 - [Code Quality](#code-quality)
 - [Dependency Management](#dependency-management)
-- [Common Tasks](#common-tasks)
+- [Common Development Tasks](#common-development-tasks)
 - [Troubleshooting](#troubleshooting)
 
-## Prerequisites
+## Development Setup
 
-### Install uv
+Assumes you have already:
+- Installed uv (see [README](README.md#installation))
+- Cloned the repository
+- Set up your Telnyx API key
 
-uv is a fast Python package manager written in Rust. Install it using one of these methods:
-
-```bash
-# macOS/Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Windows
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# Homebrew (macOS)
-brew install uv
-
-# Or with pip (if you have Python already)
-pip install uv
-```
-
-Verify installation:
-```bash
-uv --version
-```
-
-## Getting Started
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/team-telnyx/telnyx-mcp-server.git
-   cd telnyx-mcp-server
-   ```
-
-2. **Set up the development environment:**
+### Set up the development environment:
    ```bash
    # This creates a .venv and installs all dependencies including dev tools
    uv sync --all-extras

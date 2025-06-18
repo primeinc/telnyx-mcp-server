@@ -285,10 +285,10 @@ The remote server provides an HTTP/SSE interface for the Telnyx MCP server, suit
 # Run locally with gunicorn (same as Azure production)
 # Set LOG_LEVEL environment variable (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 export LOG_LEVEL=DEBUG  # or INFO for production
-uv run gunicorn -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --chdir src --access-logfile - --error-logfile - --log-level $LOG_LEVEL telnyx_mcp_server.remote.server:app
+uv run gunicorn -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --access-logfile - --error-logfile - --log-level $LOG_LEVEL telnyx_mcp_server.remote.server:app
 
 # Or run with uvicorn for development
-uv run uvicorn src.telnyx_mcp_server.remote.server:app --host 0.0.0.0 --port 8000 --reload --log-level debug
+uv run uvicorn telnyx_mcp_server.remote.server:app --host 0.0.0.0 --port 8000 --reload --log-level debug
 ```
 
 The server provides:
@@ -355,7 +355,7 @@ uv sync --all-extras
 uv run telnyx-mcp-server
 
 # Run the remote server for development
-uv run uvicorn src.telnyx_mcp_server.remote.server:app --reload
+uv run uvicorn telnyx_mcp_server.remote.server:app --reload
 
 # Run any Python script
 uv run python scripts/test_remote_server.py
@@ -472,3 +472,7 @@ One common cause is an existing ngrok process running in the background, potenti
 *   **Check for running processes:** Use commands like `ps aux | grep telnyx-mcp-server` (Linux/macOS) or check Task Manager (Windows) for any lingering `telnyx-mcp-server` processes. Since ngrok is managed internally by the server, you typically won't see a separate 'ngrok' process.
 *   **Kill old processes:** If found, terminate these old processes.
 *   **Check logs:** Review the server logs (locations mentioned above) for specific error messages related to ngrok or server startup.
+
+## Development
+
+For development setup, testing, code quality guidelines, and contribution instructions, see the [Development Guide](DEVELOPMENT.md).

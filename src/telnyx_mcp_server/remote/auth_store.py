@@ -271,6 +271,12 @@ def create_auth_store() -> Union["AsyncRedisAuthStore", "AuthStore"]:
 
     # Try to use Redis if available and configured
     if use_redis:
+        if not redis_url:
+            logger.warning(
+                "Redis auth store requested but REDIS_URL not provided, falling back to in-memory"
+            )
+            return AuthStore()
+
         try:
             from .redis_auth_store import AsyncRedisAuthStore
 
