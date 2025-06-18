@@ -1,0 +1,89 @@
+# Pre-commit hooks to maintain code quality and prevent unwanted files
+repos:
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  # Prevent specific files
+  - repo: local
+    hooks:
+      - id: no-requirements-txt
+        name: Prevent requirements.txt
+        entry: "requirements.txt found! Use uv and pyproject.toml instead"
+        language: fail
+        files: ^requirements\.txt$
+
+      - id: no-pip-compile
+        name: Prevent pip-compile files
+        entry: "pip-compile files found! Use uv instead"
+        language: fail
+        files: ^requirements\.(in|txt)$|^constraints\.txt$
+
+      - id: no-setup-py
+        name: Prevent setup.py
+        entry: "setup.py found! Use pyproject.toml instead"
+        language: fail
+        files: ^setup\.py$
+
+      - id: no-pip-conf
+        name: Prevent pip configuration
+        entry: "pip configuration found! Use uv instead"
+        language: fail
+        files: ^pip\.conf$|^\.pip/
+
+      - id: no-virtualenv-files
+        name: Prevent virtualenv artifacts
+        entry: "virtualenv files found! Use uv instead"
+        language: fail
+        files: ^pyvenv\.cfg$|^pip-selfcheck\.json$
+
+  # Python code quality (using uv run)
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: Format with ruff
+        entry: uv run ruff format
+        language: system
+        types: [python]
+        require_serial: true
+
+      - id: ruff-lint
+        name: Lint with ruff
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+        require_serial: true
+
+  # Check for common mistakes
+  - repo: local
+    hooks:
+      - id: no-pip-install
+        name: No pip install commands
+        entry: 'pip\s+install'
+        language: pygrep
+        types: [python, yaml, markdown]
+        exclude: ^\.pre-commit-config\.yaml$
+
+      - id: no-python-m-pip
+        name: No python -m pip commands
+        entry: 'python\s+-m\s+pip'
+        language: pygrep
+        types: [python, yaml, markdown]
+
+      - id: no-virtualenv-commands
+        name: No virtualenv/venv commands
+        entry: 'virtualenv|python\s+-m\s+venv'
+        language: pygrep
+        types: [python, yaml, markdown]
+        exclude: ^DEVELOPMENT\.md$  # Allow in docs explaining what NOT to do
