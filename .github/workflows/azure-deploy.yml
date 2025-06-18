@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+      - staging
+      - develop
       - feature/remote-mcp-server
   pull_request:
     branches:
@@ -18,6 +20,33 @@ permissions:
   id-token: write
 
 jobs:
+  determine-environment:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      log-level: ${{ steps.set-env.outputs.log-level }}
+      pii-redaction: ${{ steps.set-env.outputs.pii-redaction }}
+    steps:
+      - id: set-env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "log-level=WARNING" >> $GITHUB_OUTPUT
+            echo "pii-redaction=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "log-level=INFO" >> $GITHUB_OUTPUT
+            echo "pii-redaction=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "environment=development" >> $GITHUB_OUTPUT
+            echo "log-level=DEBUG" >> $GITHUB_OUTPUT
+            echo "pii-redaction=false" >> $GITHUB_OUTPUT
+          else
+            echo "environment=development" >> $GITHUB_OUTPUT
+            echo "log-level=DEBUG" >> $GITHUB_OUTPUT
+            echo "pii-redaction=false" >> $GITHUB_OUTPUT
+          fi
+
   build:
     runs-on: ubuntu-latest
 
@@ -54,9 +83,9 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, determine-environment]
     environment:
-      name: 'production'
+      name: ${{ needs.determine-environment.outputs.environment }}
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
 
     steps:
@@ -78,7 +107,7 @@ jobs:
       uses: azure/webapps-deploy@v3
       with:
         app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
-        slot-name: 'production'
+        slot-name: ${{ needs.determine-environment.outputs.environment }}
 
     - name: Configure App Settings
       uses: azure/appservice-settings@v1
@@ -92,9 +121,9 @@ jobs:
             {"name": "AZURE_CLIENT_SECRET", "value": "${{ secrets.AZURE_CLIENT_SECRET }}"},
             {"name": "AZURE_TENANT_ID", "value": "${{ secrets.AZURE_TENANT_ID }}"},
             {"name": "AZURE_REDIRECT_URI", "value": "https://${{ secrets.AZURE_WEBAPP_NAME }}.azurewebsites.net/auth/callback"},
-            {"name": "ENVIRONMENT", "value": "production"},
-            {"name": "LOG_LEVEL", "value": "INFO"},
-            {"name": "ENABLE_PII_REDACTION", "value": "true"},
+            {"name": "ENVIRONMENT", "value": "${{ needs.determine-environment.outputs.environment }}"},
+            {"name": "LOG_LEVEL", "value": "${{ needs.determine-environment.outputs.log-level }}"},
+            {"name": "ENABLE_PII_REDACTION", "value": "${{ needs.determine-environment.outputs.pii-redaction }}"},
             {"name": "MCP_ALLOWED_ORIGINS", "value": "https://claude.ai,https://chat.anthropic.com"},
             {"name": "REDIS_URL", "value": "${{ secrets.REDIS_URL }}"},
             {"name": "USE_REDIS", "value": "true"},
