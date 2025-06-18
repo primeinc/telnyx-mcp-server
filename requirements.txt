@@ -42,8 +42,6 @@ cryptography==45.0.4
     #   pyjwt
 fastapi==0.115.12
     # via telnyx-mcp-server (pyproject.toml)
-fastmcp==0.4.1
-    # via telnyx-mcp-server (pyproject.toml)
 gunicorn==23.0.0
     # via telnyx-mcp-server (pyproject.toml)
 h11==0.14.0
@@ -71,9 +69,7 @@ jmespath==1.0.1
 markdown-it-py==3.0.0
     # via rich
 mcp==1.3.0
-    # via
-    #   fastmcp
-    #   telnyx-mcp-server (pyproject.toml)
+    # via telnyx-mcp-server (pyproject.toml)
 mdurl==0.1.2
     # via markdown-it-py
 msal==1.32.3
@@ -91,7 +87,6 @@ pycparser==2.22
 pydantic==2.10.6
     # via
     #   fastapi
-    #   fastmcp
     #   mcp
     #   pydantic-settings
     #   telnyx-mcp-server (pyproject.toml)
@@ -99,7 +94,6 @@ pydantic-core==2.27.2
     # via pydantic
 pydantic-settings==2.8.1
     # via
-    #   fastmcp
     #   mcp
     #   telnyx-mcp-server (pyproject.toml)
 pygments==2.19.1
@@ -112,7 +106,6 @@ python-dateutil==2.9.0.post0
     # via botocore
 python-dotenv==1.0.1
     # via
-    #   fastmcp
     #   pydantic-settings
     #   telnyx-mcp-server (pyproject.toml)
 python-multipart==0.0.20
@@ -144,7 +137,7 @@ starlette==0.40.0
     #   mcp
     #   sse-starlette
 typer==0.15.2
-    # via fastmcp
+    # via mcp
 typing-extensions==4.12.2
     # via
     #   anyio

@@ -1,7 +1,7 @@
-"""Simple MCP server using FastMCP framework with STDIO transport."""
+"""Unified MCP server using official MCP SDK with STDIO transport."""
 
 import os
-from typing import (  # Added Sequence
+from typing import (
     Any,
     Dict,
     List,
@@ -10,21 +10,11 @@ from typing import (  # Added Sequence
 )
 
 from dotenv import load_dotenv
-from fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP
+from mcp.types import Tool as MCPTool, EmbeddedResource, ImageContent, TextContent
 
-# MCPTool is defined in mcp.types, but often exposed via fastmcp or mcp.server
-# For clarity, let's try importing directly if fastmcp doesn't re-export it well.
-try:
-    from fastmcp import MCPTool
-except ImportError:
-    from mcp.types import (
-        Tool as MCPTool,  # Fallback if not in fastmcp directly
-    )
-
-from mcp.types import EmbeddedResource, ImageContent, TextContent
-
-from .telnyx.client import TelnyxClient  # Assuming this path is correct
-from .utils.logger import get_logger  # Assuming this path is correct
+from .telnyx.client import TelnyxClient
+from .utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -38,18 +28,15 @@ if not api_key:
     raise ValueError("TELNYX_API_KEY environment variable must be set")
 
 
-class FilterableFastMCP(FastMCP):
-    """Extended FastMCP class that supports tool filtering."""
+class FilterableOfficialMCP(FastMCP):
+    """Extended official FastMCP class that supports tool filtering."""
 
     def __init__(self, *args, **kwargs):
-        # Call super().__init__() first. This will run FastMCP's _setup_handlers,
-        # which will register self.list_tools and self.call_tool (from this FilterableFastMCP class)
+        # Call super().__init__() first to initialize the official FastMCP
         super().__init__(*args, **kwargs)
 
         self._enabled_tools: Optional[List[str]] = None
         self._excluded_tools: List[str] = []
-        # Note: The original _original_list_tools_handler and _filtered_list_tools etc. are removed
-        # as the filtering is now done by overriding list_tools and call_tool directly.
 
     def set_enabled_tools(self, tool_names: List[str]) -> None:
         """
@@ -77,11 +64,9 @@ class FilterableFastMCP(FastMCP):
 
     async def list_tools(
         self,
-    ) -> list[MCPTool]:  # Matches signature from FastMCP
+    ) -> list[MCPTool]:
         """Filter the list of tools based on enabled/excluded settings."""
-        all_mcp_tools = (
-            await super().list_tools()
-        )  # Get all tools as defined by FastMCP
+        all_mcp_tools = await super().list_tools()
 
         # If no filtering is configured, return all tools
         if self._enabled_tools is None and not self._excluded_tools:
@@ -89,7 +74,6 @@ class FilterableFastMCP(FastMCP):
 
         filtered_mcp_tools = []
         for tool_spec in all_mcp_tools:
-            # MCPTool has a 'name' attribute according to MCP spec and fastmcp usage
             tool_name = tool_spec.name
 
             # Check if tool should be included
@@ -111,22 +95,19 @@ class FilterableFastMCP(FastMCP):
 
             filtered_mcp_tools.append(tool_spec)
 
-        # This logging can be verbose if many tools, consider conditional logging or removing
-        # logger.info(f"Filtered tools from {len(all_mcp_tools)} to {len(filtered_mcp_tools)}")
         return filtered_mcp_tools
 
     async def call_tool(
         self,
         name: str,
-        arguments: Dict[str, Any],  # 'name' instead of 'key' to match FastMCP
+        arguments: Dict[str, Any],
     ) -> Sequence[
         TextContent | ImageContent | EmbeddedResource
-    ]:  # Matches signature
+    ]:
         """Filter tool calls based on enabled/excluded settings."""
         # Check if tool is allowed
         if self._enabled_tools is not None and name not in self._enabled_tools:
             logger.warning(f"Attempted to call disabled tool: '{name}'")
-            # Consider raising a specific MCP error type if available/appropriate
             raise ValueError(f"Tool '{name}' is not enabled")
 
         if name in self._excluded_tools:
@@ -141,8 +122,8 @@ class FilterableFastMCP(FastMCP):
             raise
 
 
-# Create a single shared MCP instance with filtering support
-mcp = FilterableFastMCP("Telnyx MCP")
+# Create a single shared MCP instance with filtering support using official SDK
+mcp = FilterableOfficialMCP("Telnyx MCP")
 
 # Initialize Telnyx client with API key from environment
 telnyx_client = TelnyxClient(api_key=api_key)
