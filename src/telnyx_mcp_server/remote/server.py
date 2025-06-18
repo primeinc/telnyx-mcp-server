@@ -110,94 +110,6 @@ class TelnyxMCPServer:
             logger.error(f"Failed to initialize tools: {e}", exc_info=True)
             self._tools_initialized = False
 
-    def _extract_parameters_from_docstring(
-        self, docstring: str
-    ) -> Dict[str, Any]:
-        """Extract parameter definitions from tool docstring."""
-        if not docstring:
-            return {"type": "object", "properties": {}, "required": []}
-
-        lines = docstring.split("\n")
-        in_args = False
-        properties = {}
-        required = []
-
-        for line in lines:
-            line = line.strip()
-
-            # Start of Args section
-            if line.startswith("Args:"):
-                in_args = True
-                continue
-
-            # End of Args section
-            if in_args and (
-                line.startswith("Returns:") or line == "" and not lines
-            ):
-                break
-
-            # Parse parameter lines
-            if in_args and line:
-                # Match parameter definition pattern
-                if ":" in line:
-                    parts = line.split(":", 1)
-                    param_name = parts[0].strip()
-                    description = parts[1].strip() if len(parts) > 1 else ""
-
-                    # Extract type and required status from description
-                    is_required = (
-                        "Required." in description
-                        or "required." in description
-                    )
-                    is_optional = (
-                        "Optional" in description or "optional" in description
-                    )
-
-                    # Determine type from description
-                    param_type = "string"  # default
-                    if (
-                        "boolean" in description.lower()
-                        or "bool" in description.lower()
-                    ):
-                        param_type = "boolean"
-                    elif (
-                        "integer" in description.lower()
-                        or "int" in description.lower()
-                    ):
-                        param_type = "integer"
-                    elif (
-                        "number" in description.lower()
-                        or "float" in description.lower()
-                    ):
-                        param_type = "number"
-                    elif (
-                        "array" in description.lower()
-                        or "list" in description.lower()
-                    ):
-                        param_type = "array"
-                    elif (
-                        "object" in description.lower()
-                        or "dict" in description.lower()
-                    ):
-                        param_type = "object"
-
-                    # Clean up parameter name (remove trailing underscore)
-                    clean_name = param_name.rstrip("_")
-
-                    properties[clean_name] = {
-                        "type": param_type,
-                        "description": description,
-                    }
-
-                    if is_required and not is_optional:
-                        required.append(clean_name)
-
-        return {
-            "type": "object",
-            "properties": properties,
-            "required": required,
-        }
-
     def _transform_tool_schema(self, tool: Dict[str, Any]) -> Dict[str, Any]:
         """Transform tool schema using Pydantic models when available."""
         return fix_tool_schema(tool)
@@ -533,12 +445,24 @@ async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
 
     # Add security headers
-    response.headers["Strict-Transport-Security"] = (
-        "max-age=31536000; includeSubDomains"
+    response.headers["Strict-Transport-Security"] = os.getenv(
+        "STRICT_TRANSPORT_SECURITY", "max-age=31536000; includeSubDomains"
     )
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+    response.headers["Referrer-Policy"] = os.getenv(
+        "REFERRER_POLICY", "strict-origin-when-cross-origin"
+    )
+
+    # Configure CSP based on environment
+    environment = os.getenv("ENVIRONMENT", "development")
+    if environment == "production":
+        # Stricter CSP for production - no unsafe-inline
+        default_csp = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'"
+    else:
+        # More permissive CSP for development
+        default_csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+
+    response.headers["Content-Security-Policy"] = os.getenv(
+        "CONTENT_SECURITY_POLICY", default_csp
     )
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"

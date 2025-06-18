@@ -21,6 +21,14 @@ async def test_server():
 
         # Check that required endpoints exist
         routes = [route.path for route in app.routes]
+        # List of endpoints that are required for the API to function correctly.
+        # These endpoints are validated to ensure the server is configured as expected:
+        # - "/" : Root endpoint for API documentation
+        # - "/health" : Health check endpoint for monitoring and deployment readiness
+        # - "/authorize" : OAuth 2.0 authorization endpoint for initiating auth flow
+        # - "/token" : OAuth 2.0 token endpoint for exchanging codes for tokens
+        # - "/mcp" : Main MCP protocol endpoint for handling tool calls
+        # Update this list if new critical routes are added or existing ones are modified.
         required_endpoints = ["/", "/health", "/authorize", "/token", "/mcp"]
 
         missing_endpoints = [
