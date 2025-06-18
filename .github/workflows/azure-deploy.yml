@@ -102,17 +102,34 @@ jobs:
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+    - name: Get deployed web app name
+      id: get-webapp-name
+      run: |
+        # Get the resource group name based on environment
+        RG_NAME="rg-${{ needs.determine-environment.outputs.environment }}"
+
+        # Get the web app name from the resource group
+        WEBAPP_NAME=$(az webapp list --resource-group "$RG_NAME" --query "[?tags.'azd-service-name'=='web'].name" -o tsv)
+
+        if [ -z "$WEBAPP_NAME" ]; then
+          echo "Error: No web app found in resource group $RG_NAME"
+          exit 1
+        fi
+
+        echo "WEBAPP_NAME=$WEBAPP_NAME" >> $GITHUB_OUTPUT
+        echo "Found web app: $WEBAPP_NAME"
+
     - name: Deploy to Azure Web App
       id: deploy-to-webapp
       uses: azure/webapps-deploy@v3
       with:
-        app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+        app-name: ${{ steps.get-webapp-name.outputs.WEBAPP_NAME }}
         slot-name: ${{ needs.determine-environment.outputs.environment }}
 
     - name: Configure App Settings
       uses: azure/appservice-settings@v1
       with:
-        app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+        app-name: ${{ steps.get-webapp-name.outputs.WEBAPP_NAME }}
         app-settings-json: |
           [
             {"name": "TELNYX_API_KEY", "value": "${{ secrets.TELNYX_API_KEY }}"},
@@ -120,7 +137,7 @@ jobs:
             {"name": "AZURE_CLIENT_ID", "value": "${{ secrets.AZURE_CLIENT_ID }}"},
             {"name": "AZURE_CLIENT_SECRET", "value": "${{ secrets.AZURE_CLIENT_SECRET }}"},
             {"name": "AZURE_TENANT_ID", "value": "${{ secrets.AZURE_TENANT_ID }}"},
-            {"name": "AZURE_REDIRECT_URI", "value": "https://${{ secrets.AZURE_WEBAPP_NAME }}.azurewebsites.net/auth/callback"},
+            {"name": "AZURE_REDIRECT_URI", "value": "https://${{ steps.get-webapp-name.outputs.WEBAPP_NAME }}.azurewebsites.net/auth/callback"},
             {"name": "ENVIRONMENT", "value": "${{ needs.determine-environment.outputs.environment }}"},
             {"name": "LOG_LEVEL", "value": "${{ needs.determine-environment.outputs.log-level }}"},
             {"name": "ENABLE_PII_REDACTION", "value": "${{ needs.determine-environment.outputs.pii-redaction }}"},

@@ -104,3 +104,4 @@ output AZURE_LOCATION string = location
 output AZURE_TENANT_ID string = tenant().tenantId
 output WEB_URI string = web.outputs.uri
 output RESOURCE_GROUP string = rg.name
+output AZURE_WEB_APP_NAME string = web.outputs.name

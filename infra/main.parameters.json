@@ -12,10 +12,10 @@
       "value": "${AZURE_PRINCIPAL_ID}"
     },
     "azureClientId": {
-      "value": "${AZURE_CLIENT_ID}"
+      "value": "${AZURE_OAUTH_CLIENT_ID}"
     },
     "azureClientSecret": {
-      "value": "${AZURE_CLIENT_SECRET}"
+      "value": "${AZURE_OAUTH_CLIENT_SECRET}"
     },
     "azureTenantId": {
       "value": "${AZURE_TENANT_ID}"
