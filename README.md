@@ -2,14 +2,9 @@
 
 Official Telnyx Model Context Protocol (MCP) Server that enables interaction with powerful telephony, messaging, and AI assistant APIs. This server allows MCP clients like Claude Desktop, Claude.ai, Cursor, Windsurf, OpenAI Agents and others to manage phone numbers, send messages, make calls, and create AI assistants.
 
-## Deployment Options
+## Implementation
 
-This server supports two deployment modes:
-
-1. **Local Mode** - Run locally via stdio transport for Claude Desktop and other local MCP clients
-2. **Remote Mode** - Deploy as a cloud service with OAuth authentication for Claude.ai custom integrations
-
-For remote deployment instructions, see [REMOTE_DEPLOYMENT.md](REMOTE_DEPLOYMENT.md).
+This server is built using the **official MCP Python SDK** (`mcp` package) with a unified architecture that supports both local stdio transport and remote deployments. The implementation uses `mcp.server.fastmcp.FastMCP` for robust, spec-compliant MCP server functionality.
 
 ## Quickstart with Claude Desktop
 
@@ -66,6 +61,10 @@ If you're using Windows, you will have to enable "Developer Mode" in Claude Desk
 Replace “/path/to/telnyx-mcp-server” with the actual location of the repository.
 
 ## Available Tools
+
+### Demo Tools (Official SDK)
+- `echo_message`: Simple echo tool demonstrating the unified MCP server using official SDK
+- `server_info`: Get information about the unified MCP server implementation
 
 ### Assistant Tools
 - Create AI assistants with custom instructions and configurations
@@ -273,9 +272,16 @@ To enable webhooks in Claude Desktop, update your configuration:
 
 ﻿﻿﻿﻿<img width="704" alt="Screenshot Webhook" src="https://github.com/user-attachments/assets/2e1f4a47-df24-4e35-acdf-765ef4a71578" />
 
-## Remote MCP Now Available
+## Official MCP SDK Migration
 
-Telnyx now offers a remote MCP implementation based on the latest MCP specification. This allows you to access Telnyx's powerful communications APIs through a remotely hosted MCP server. No need to run the server locally. Learn more in the [official documentation](https://developers.telnyx.com/docs/mcp/remote-mcp).
+This server has been migrated to use the **official MCP Python SDK** (the `mcp` package), replacing the previous community FastMCP implementation. Key improvements include:
+
+- **Unified Architecture**: Single server implementation supporting both local and remote deployment modes
+- **Official SDK Compliance**: Uses `mcp.server.fastmcp.FastMCP` for full MCP specification compliance  
+- **Enhanced Reliability**: Built on the official, maintained MCP implementation
+- **Future-Proof**: Automatically stays current with MCP specification updates
+
+Telnyx also offers a remote MCP implementation based on the latest MCP specification. This allows you to access Telnyx's powerful communications APIs through a remotely hosted MCP server. No need to run the server locally. Learn more in the [official documentation](https://developers.telnyx.com/docs/mcp/remote-mcp).
 
 ## Running the Remote Server
 
