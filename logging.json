@@ -1,0 +1,75 @@
+{
+    "version": 1,
+    "disable_existing_loggers": false,
+    "formatters": {
+        "default": {
+            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        },
+        "detailed": {
+            "format": "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s"
+        },
+        "json": {
+            "format": "%(asctime)s %(name)s %(levelname)s %(message)s",
+            "class": "pythonjsonlogger.jsonlogger.JsonFormatter"
+        }
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "level": "DEBUG",
+            "formatter": "detailed",
+            "stream": "ext://sys.stdout"
+        },
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "level": "INFO",
+            "formatter": "detailed",
+            "filename": "/home/LogFiles/telnyx-mcp-server.log",
+            "maxBytes": 10485760,
+            "backupCount": 5
+        },
+        "error_file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "level": "ERROR",
+            "formatter": "detailed",
+            "filename": "/home/LogFiles/telnyx-mcp-server-errors.log",
+            "maxBytes": 10485760,
+            "backupCount": 5
+        }
+    },
+    "loggers": {
+        "telnyx_mcp_server": {
+            "level": "DEBUG",
+            "handlers": ["console", "file", "error_file"],
+            "propagate": false
+        },
+        "uvicorn": {
+            "level": "INFO",
+            "handlers": ["console", "file"]
+        },
+        "uvicorn.error": {
+            "level": "INFO",
+            "handlers": ["console", "file", "error_file"]
+        },
+        "uvicorn.access": {
+            "level": "INFO",
+            "handlers": ["console", "file"]
+        },
+        "gunicorn": {
+            "level": "INFO",
+            "handlers": ["console", "file"]
+        },
+        "gunicorn.error": {
+            "level": "INFO",
+            "handlers": ["console", "file", "error_file"]
+        },
+        "gunicorn.access": {
+            "level": "INFO",
+            "handlers": ["console", "file"]
+        }
+    },
+    "root": {
+        "level": "INFO",
+        "handlers": ["console", "file"]
+    }
+}

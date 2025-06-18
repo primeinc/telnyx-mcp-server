@@ -6,11 +6,44 @@ services:
     project: .
     language: python
     host: appservice
+    ignore:
+      - .git
+      - .github
+      - .venv
+      - .pytest_cache
+      - .ruff_cache
+      - tests
+      - scripts
+      - "*.log"
+      - "*.zip"
+      - .env
+      - .env.*
+      - examples
+      - __pycache__
+      - "*.pyc"
+      - .mypy_cache
+      - .coverage
+      - htmlcov
+      - .vscode
+      - .idea
+      - "*.swp"
+      - "*.swo"
+      - .DS_Store
+      - deployment_log.json
+      - logging.json
+      - webapp-logs.zip
+      - latest-logs.zip
     hooks:
       prepackage:
         windows:
           shell: pwsh
-          run: uv pip compile pyproject.toml -o requirements.txt
+          run: |
+            uv pip compile ../pyproject.toml -o requirements.txt
+            Copy-Item ../appsvc.yaml . -Force
+            Copy-Item ../startup.py . -Force
         posix:
           shell: sh
-          run: uv pip compile pyproject.toml -o requirements.txt
+          run: |
+            uv pip compile ../pyproject.toml -o requirements.txt
+            cp ../appsvc.yaml .
+            cp ../startup.py .

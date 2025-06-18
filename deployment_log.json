@@ -1,0 +1,121 @@
+[
+  {
+    "details_url": null,
+    "id": "817c8d7a-3069-4b13-ab4b-a3375a9dec31",
+    "log_time": "2025-06-18T15:17:02.3608044Z",
+    "message": "Updating submodules.",
+    "type": 0
+  },
+  {
+    "details_url": null,
+    "id": "c934dffc-a322-4ee7-80b6-9c1bfd7b96bf",
+    "log_time": "2025-06-18T15:17:03.4452642Z",
+    "message": "Preparing deployment for commit id '4516765f-7'.",
+    "type": 0
+  },
+  {
+    "details_url": null,
+    "id": "509bb2e1-ded5-4274-83b2-c8823a0c1ead",
+    "log_time": "2025-06-18T15:17:03.6885874Z",
+    "message": "PreDeployment: context.CleanOutputPath False",
+    "type": 0
+  },
+  {
+    "details_url": null,
+    "id": "04d40abb-ba95-4ac8-af20-688919f29c35",
+    "log_time": "2025-06-18T15:17:03.7715421Z",
+    "message": "PreDeployment: context.OutputPath /home/site/wwwroot",
+    "type": 0
+  },
+  {
+    "details_url": null,
+    "id": "3f9c2424-d570-41e2-9f1c-27bfa854ebf8",
+    "log_time": "2025-06-18T15:17:03.8617994Z",
+    "message": "Repository path is /tmp/zipdeploy/extracted",
+    "type": 0
+  },
+  {
+    "details_url": "https://app-telnyxmcp-dev-eus2-001.scm.azurewebsites.net/api/deployments/4516765f-7bf8-4fae-b77b-82f67c983b5d/log/a53a6544-a040-4e79-842e-f458242994aa",
+    "id": "a53a6544-a040-4e79-842e-f458242994aa",
+    "log_time": "2025-06-18T15:17:03.9756395Z",
+    "message": "Running oryx build...",
+    "type": 2
+  },
+  {
+    "details_url": null,
+    "id": "302462ef-35f1-48f2-9c58-7224bda9b1e1",
+    "log_time": "2025-06-18T15:17:53.2240413Z",
+    "message": "",
+    "type": 0
+  },
+  {
+    "details_url": null,
+    "id": "bf4f67b6-a042-47ee-8f19-f4f9f7b1883e",
+    "log_time": "2025-06-18T15:17:53.2887397Z",
+    "message": "Generating summary of Oryx build",
+    "type": 0
+  },
+  {
+    "details_url": null,
+    "id": "72631b4c-9691-46a6-a285-a11de8726264",
+    "log_time": "2025-06-18T15:17:53.3964479Z",
+    "message": "Parsing the build logs",
+    "type": 0
+  },
+  {
+    "details_url": null,
+    "id": "6792aeaa-799e-4047-b787-6ab3ff3be06a",
+    "log_time": "2025-06-18T15:17:53.5157587Z",
+    "message": "Found 0 issue(s)",
+    "type": 0
+  },
+  {
+    "details_url": null,
+    "id": "be3c9010-cd3c-4c0d-b00e-0e2dcf4b878e",
+    "log_time": "2025-06-18T15:17:53.5825003Z",
+    "message": "",
+    "type": 0
+  },
+  {
+    "details_url": null,
+    "id": "053457a3-4f21-4bee-98c8-445417d8c777",
+    "log_time": "2025-06-18T15:17:53.6529724Z",
+    "message": "Build Summary :",
+    "type": 0
+  },
+  {
+    "details_url": null,
+    "id": "179bdc0b-ce32-4215-9a79-ab0ccf8354f5",
+    "log_time": "2025-06-18T15:17:53.7336851Z",
+    "message": "===============",
+    "type": 0
+  },
+  {
+    "details_url": null,
+    "id": "6653928b-573b-4195-bf7a-4a961a7a462c",
+    "log_time": "2025-06-18T15:17:53.8066475Z",
+    "message": "Errors (0)",
+    "type": 0
+  },
+  {
+    "details_url": null,
+    "id": "ac321294-cf35-4679-9c73-6aa29819b3cd",
+    "log_time": "2025-06-18T15:17:53.8720808Z",
+    "message": "Warnings (0)",
+    "type": 0
+  },
+  {
+    "details_url": null,
+    "id": "b3402e70-0d67-435b-9a5e-c424cdff3f35",
+    "log_time": "2025-06-18T15:17:53.9388476Z",
+    "message": "",
+    "type": 0
+  },
+  {
+    "details_url": null,
+    "id": "13767481-75fc-4079-97c6-046144cff9f6",
+    "log_time": "2025-06-18T15:17:54.5155471Z",
+    "message": "Deployment Failed. deployer = Push-Deployer deploymentPath = ZipDeploy. Extract zip. Remote build.",
+    "type": 0
+  }
+]

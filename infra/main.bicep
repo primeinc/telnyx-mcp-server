@@ -202,12 +202,13 @@ module web './app/web.bicep' = {
       AZURE_CERTIFICATE_THUMBPRINT: createOAuthApp && useKeyVault ? certificate.outputs.certThumbprint : ''
 
       // JWT Configuration
-      JWT_SECRET_KEY: useKeyVault ? '' : jwtSecretKey
+      JWT_SECRET_KEY: useKeyVault ? '@Microsoft.KeyVault(VaultName=${keyVault.outputs.name};SecretName=jwt-secret-key)' : jwtSecretKey
       JWT_ALGORITHM: 'HS256'
       JWT_EXPIRATION_HOURS: '24'
 
       // Telnyx Configuration
-      TELNYX_API_KEY: useKeyVault ? '' : telnyxApiKey
+      TELNYX_API_KEY: useKeyVault ? '@Microsoft.KeyVault(VaultName=${keyVault.outputs.name};SecretName=telnyx-api-key)' : telnyxApiKey
+
 
       // Environment and Logging
       ENVIRONMENT: environment

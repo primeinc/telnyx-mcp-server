@@ -31,7 +31,6 @@ resource web 'Microsoft.Web/sites@2022-03-01' = {
       minTlsVersion: '1.2'
       scmMinTlsVersion: '1.2'
       healthCheckPath: '/health'
-      appCommandLine: 'python -m gunicorn -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --access-logfile - --error-logfile - --log-level info telnyx_mcp_server.remote.server:app'
       appSettings: [for setting in items(appSettings): {
         name: setting.key
         value: setting.value
