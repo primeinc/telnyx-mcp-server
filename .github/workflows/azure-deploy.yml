@@ -68,6 +68,17 @@ jobs:
       run: |
         uv sync --frozen --no-dev
 
+    - name: Generate requirements.txt for Azure deployment
+      run: |
+        uv pip compile pyproject.toml -o requirements.txt
+        echo "Generated requirements.txt for Azure App Service deployment"
+        # Verify the requirements.txt was created properly
+        if [ ! -f requirements.txt ]; then
+          echo "Error: requirements.txt was not generated"
+          exit 1
+        fi
+        echo "Requirements.txt size: $(wc -l < requirements.txt) lines"
+
     - name: Upload artifact for deployment
       uses: actions/upload-artifact@v4
       with:
@@ -79,7 +90,10 @@ jobs:
           !.github/
           !tests/
           !scripts/
-          !uv.lock
+          !__pycache__/
+          !*.pyc
+          !.pytest_cache/
+          !.ruff_cache/
 
   deploy:
     runs-on: ubuntu-latest
@@ -109,7 +123,7 @@ jobs:
         RG_NAME="rg-${{ needs.determine-environment.outputs.environment }}"
 
         # Get the web app name from the resource group
-        WEBAPP_NAME=$(az webapp list --resource-group "$RG_NAME" --query "[?tags.'azd-service-name'=='web'].name" -o tsv)
+        WEBAPP_NAME=$(az webapp list --resource-group "$RG_NAME" -o json | jq -r '.[] | select(.tags."azd-service-name"=="web") | .name')
 
         if [ -z "$WEBAPP_NAME" ]; then
           echo "Error: No web app found in resource group $RG_NAME"
@@ -146,14 +160,16 @@ jobs:
             {"name": "USE_REDIS", "value": "true"},
             {"name": "APPLICATION_INSIGHTS_KEY", "value": "${{ secrets.APPLICATION_INSIGHTS_KEY }}"},
             {"name": "GIT_COMMIT_HASH", "value": "${{ github.sha }}"},
-            {"name": "WEBSITE_RUN_FROM_PACKAGE", "value": "1"},
+            {"name": "WEBSITE_RUN_FROM_PACKAGE", "value": "0"},
             {"name": "WEBSITES_CONTAINER_START_TIME_LIMIT", "value": "1800"},
             {"name": "WEBSITES_ENABLE_APP_SERVICE_STORAGE", "value": "false"},
-            {"name": "WEBSITE_WEBDEPLOY_USE_SCM", "value": "true"}
+            {"name": "WEBSITE_WEBDEPLOY_USE_SCM", "value": "true"},
+            {"name": "SCM_DO_BUILD_DURING_DEPLOYMENT", "value": "true"},
+            {"name": "ENABLE_ORYX_BUILD", "value": "true"}
           ]
         general-settings-json: |
           {
-            "appCommandLine": "gunicorn -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --access-logfile - --error-logfile - --log-level info telnyx_mcp_server.remote.server:app",
+            "appCommandLine": "python -m gunicorn -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --access-logfile - --error-logfile - --log-level info telnyx_mcp_server.remote.server:app",
             "linuxFxVersion": "PYTHON|3.11"
           }
 
@@ -176,17 +192,44 @@ jobs:
         path: .github/actions/deploy-logs/
         retention-days: 30
 
+    - name: Wait for deployment to be ready
+      run: |
+        echo "Waiting for deployment to be ready..."
+        WEBAPP_URL="${{ steps.deploy-to-webapp.outputs.webapp-url }}"
+        MAX_ATTEMPTS=30
+        SLEEP_TIME=10
+
+        for i in $(seq 1 $MAX_ATTEMPTS); do
+          echo "Attempt $i/$MAX_ATTEMPTS..."
+          if curl -s -o /dev/null -w "%{http_code}" "${WEBAPP_URL}/health" | grep -q "200"; then
+            echo "Application is ready!"
+            break
+          fi
+
+          if [ $i -eq $MAX_ATTEMPTS ]; then
+            echo "Application failed to become ready after $((MAX_ATTEMPTS * SLEEP_TIME)) seconds"
+            exit 1
+          fi
+
+          echo "Application not ready yet, waiting ${SLEEP_TIME}s..."
+          sleep $SLEEP_TIME
+        done
+
     - name: Test deployed application
       run: |
         echo "Testing deployed application at ${{ steps.deploy-to-webapp.outputs.webapp-url }}"
+        WEBAPP_URL="${{ steps.deploy-to-webapp.outputs.webapp-url }}"
 
         # Test health endpoint
-        curl -f "${{ steps.deploy-to-webapp.outputs.webapp-url }}/health" | jq .
+        echo "Testing health endpoint..."
+        curl -f "${WEBAPP_URL}/health" | jq . || (echo "Health check failed"; exit 1)
 
         # Test OAuth metadata
-        curl -f "${{ steps.deploy-to-webapp.outputs.webapp-url }}/.well-known/oauth-authorization-server" | jq .
+        echo "Testing OAuth metadata endpoint..."
+        curl -f "${WEBAPP_URL}/.well-known/oauth-authorization-server" | jq . || (echo "OAuth metadata check failed"; exit 1)
 
         # Test MCP metadata
-        curl -f "${{ steps.deploy-to-webapp.outputs.webapp-url }}/.well-known/mcp-oauth-metadata" | jq .
+        echo "Testing MCP metadata endpoint..."
+        curl -f "${WEBAPP_URL}/.well-known/mcp-oauth-metadata" | jq . || (echo "MCP metadata check failed"; exit 1)
 
-        echo "Basic deployment tests passed"
+        echo "All deployment tests passed successfully!"

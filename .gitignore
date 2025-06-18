@@ -167,3 +167,13 @@ server_*.pid
 # uv
 .venv/
 uv.lock.bak
+
+# Generated for Azure deployment only (but not startup.sh)
+requirements.txt
+# Example repositories
+examples/
+
+# Azure deployment
+.azure/
+*.parameters.*.json
+!main.parameters.json

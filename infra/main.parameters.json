@@ -8,23 +8,41 @@
     "location": {
       "value": "${AZURE_LOCATION}"
     },
-    "principalId": {
-      "value": "${AZURE_PRINCIPAL_ID}"
-    },
-    "azureClientId": {
-      "value": "${AZURE_OAUTH_CLIENT_ID}"
-    },
-    "azureClientSecret": {
-      "value": "${AZURE_OAUTH_CLIENT_SECRET}"
-    },
-    "azureTenantId": {
-      "value": "${AZURE_TENANT_ID}"
-    },
     "jwtSecretKey": {
       "value": "${JWT_SECRET_KEY}"
     },
     "telnyxApiKey": {
       "value": "${TELNYX_API_KEY}"
+    },
+    "environment": {
+      "value": "${ENVIRONMENT}"
+    },
+    "useKeyVault": {
+      "value": "${USE_KEY_VAULT}"
+    },
+    "useRedis": {
+      "value": "${USE_REDIS}"
+    },
+    "createOAuthApp": {
+      "value": "${CREATE_OAUTH_APP}"
+    },
+    "gitHubOwner": {
+      "value": "${GITHUB_OWNER}"
+    },
+    "gitHubRepo": {
+      "value": "${GITHUB_REPO}"
+    },
+    "dataClassification": {
+      "value": "${DATA_CLASSIFICATION}"
+    },
+    "businessCriticality": {
+      "value": "${BUSINESS_CRITICALITY}"
+    },
+    "businessUnit": {
+      "value": "${BUSINESS_UNIT}"
+    },
+    "opsTeam": {
+      "value": "${OPS_TEAM}"
     }
   }
 }

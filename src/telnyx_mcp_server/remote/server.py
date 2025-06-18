@@ -1604,7 +1604,17 @@ async def mcp_sse_stream(
     return EventSourceResponse(event_generator(), headers=headers)
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the remote server."""
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run(
+        "telnyx_mcp_server.remote.server:app",
+        host="0.0.0.0",
+        port=8000,
+        log_level=os.getenv("LOG_LEVEL", "info").lower(),
+    )
+
+
+if __name__ == "__main__":
+    main()

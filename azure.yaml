@@ -6,3 +6,11 @@ services:
     project: .
     language: python
     host: appservice
+    hooks:
+      prepackage:
+        windows:
+          shell: pwsh
+          run: uv pip compile pyproject.toml -o requirements.txt
+        posix:
+          shell: sh
+          run: uv pip compile pyproject.toml -o requirements.txt

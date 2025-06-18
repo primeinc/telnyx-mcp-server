@@ -1,0 +1,108 @@
+name: Deploy to Azure with azd
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      useKeyVault:
+        description: 'Use Azure Key Vault for secrets'
+        required: true
+        default: true
+        type: boolean
+  push:
+    branches:
+      - main
+      - staging
+      - develop
+
+# Set up permissions for deploying with secretless Azure federated credentials
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || github.ref == 'refs/heads/staging' && 'staging' || 'development') }}
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ENV_NAME: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || github.ref == 'refs/heads/staging' && 'staging' || 'development') }}
+      USE_KEY_VAULT: ${{ github.event.inputs.useKeyVault || 'true' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install azd
+        uses: Azure/setup-azd@v1.0.0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Log in with Azure (Federated Credentials)
+        if: ${{ env.AZURE_CLIENT_ID != '' }}
+        run: |
+          azd auth login \
+            --client-id "$AZURE_CLIENT_ID" \
+            --federated-credential-provider "github" \
+            --tenant-id "$AZURE_TENANT_ID"
+
+      - name: Set azd environment
+        run: |
+          azd env new ${{ env.AZURE_ENV_NAME }} || echo "Environment already exists"
+          azd env set AZURE_LOCATION "${{ vars.AZURE_LOCATION }}"
+          azd env set AZURE_SUBSCRIPTION_ID "${{ env.AZURE_SUBSCRIPTION_ID }}"
+
+          # Set deployment parameters
+          azd env set useKeyVault "${{ env.USE_KEY_VAULT }}"
+          azd env set environment "${{ env.AZURE_ENV_NAME }}"
+
+          # Set OAuth parameters
+          azd env set azureClientId "${{ secrets.AZURE_OAUTH_CLIENT_ID }}"
+          azd env set azureTenantId "${{ vars.AZURE_TENANT_ID }}"
+
+          # Set secrets based on Key Vault usage
+          if [ "${{ env.USE_KEY_VAULT }}" = "false" ]; then
+            azd env set azureClientSecret "${{ secrets.AZURE_OAUTH_CLIENT_SECRET }}"
+            azd env set jwtSecretKey "${{ secrets.JWT_SECRET_KEY }}"
+            azd env set telnyxApiKey "${{ secrets.TELNYX_API_KEY }}"
+          else
+            # When using Key Vault, we still need these for initial provisioning
+            azd env set azureClientSecret "${{ secrets.AZURE_OAUTH_CLIENT_SECRET }}"
+            azd env set jwtSecretKey "${{ secrets.JWT_SECRET_KEY }}"
+            azd env set telnyxApiKey "${{ secrets.TELNYX_API_KEY }}"
+          fi
+
+      - name: Provision Infrastructure
+        run: azd provision --no-prompt --environment ${{ env.AZURE_ENV_NAME }}
+
+      - name: Deploy Application
+        run: azd deploy --no-prompt --environment ${{ env.AZURE_ENV_NAME }}
+
+      - name: Display deployment info
+        run: |
+          echo "Deployment completed!"
+          echo "Environment: ${{ env.AZURE_ENV_NAME }}"
+          echo "Key Vault enabled: ${{ env.USE_KEY_VAULT }}"
+          echo "Application URL: $(azd env get-value WEB_URI)"
+          if [ "${{ env.USE_KEY_VAULT }}" = "true" ]; then
+            echo "Key Vault: $(azd env get-value AZURE_KEY_VAULT_NAME)"
+          fi
