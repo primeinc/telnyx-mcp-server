@@ -39,14 +39,14 @@ If you're using Windows, you will have to enable "Developer Mode" in Claude Desk
 
 2. Install `uvx` (Python package manager), install with `curl -LsSf https://astral.sh/uv/install.sh | sh` , `brew install uv` or see the `uv` repo for additional install methods.
 
-3. **Clone the Git Repository**  
+3. **Clone the Git Repository**
    Use Git to download the Telnyx MCP Server locally:
    ```bash
    git clone https://github.com/team-telnyx/telnyx-mcp-server.git
    cd telnyx-mcp-server
    ```
 
-4. **Configure and Run with uvx**  
+4. **Configure and Run with uvx**
    In your Claude config, you can reference the local folder by using the `--from` argument. For example:
    ```json
    {
@@ -62,7 +62,7 @@ If you're using Windows, you will have to enable "Developer Mode" in Claude Desk
    }
    ```
 
-5. This instructs Claude to run the server from the folder you cloned. 
+5. This instructs Claude to run the server from the folder you cloned.
 Replace “/path/to/telnyx-mcp-server” with the actual location of the repository.
 
 ## Available Tools
@@ -285,10 +285,10 @@ The remote server provides an HTTP/SSE interface for the Telnyx MCP server, suit
 # Run locally with gunicorn (same as Azure production)
 # Set LOG_LEVEL environment variable (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 export LOG_LEVEL=DEBUG  # or INFO for production
-gunicorn -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --chdir src --access-logfile - --error-logfile - --log-level $LOG_LEVEL telnyx_mcp_server.remote.server:app
+uv run gunicorn -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --access-logfile - --error-logfile - --log-level $LOG_LEVEL telnyx_mcp_server.remote.server:app
 
 # Or run with uvicorn for development
-cd src && python -m uvicorn telnyx_mcp_server.remote.server:app --host 0.0.0.0 --port 8000 --reload --log-level debug
+uv run uvicorn telnyx_mcp_server.remote.server:app --host 0.0.0.0 --port 8000 --reload --log-level debug
 ```
 
 The server provides:
@@ -315,22 +315,115 @@ This project includes GitHub Actions workflow for automated deployment to Azure 
 3. **Deploy**:
    Push to `main` or `feature/remote-mcp-server` branch to trigger automatic deployment.
 
-## Contributing
+## Development
 
-If you want to contribute or run from source:
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management and development workflow.
 
-1. Clone the repository:
+### Prerequisites
+
+1. Install uv:
+```bash
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# or
+wget -qO- https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+2. Clone the repository:
 ```bash
 git clone https://github.com/team-telnyx/telnyx-mcp-server.git
 cd telnyx-mcp-server
 ```
 
-2. Create a virtual environment and install dependencies using uv:
+### Setup Development Environment
+
 ```bash
-uv venv
-source .venv/bin/activate
-uv pip install -e ".[dev]"  # Includes development dependencies like ruff
+# Install all dependencies (including dev dependencies)
+uv sync --all-extras
+
+# The virtual environment is created automatically at .venv/
+# No need to activate it - uv handles this for you!
 ```
+
+### Running the Server Locally
+
+```bash
+# Run the MCP server (local mode)
+uv run telnyx-mcp-server
+
+# Run the remote server for development
+uv run uvicorn telnyx_mcp_server.remote.server:app --reload
+
+# Run any Python script
+uv run python scripts/test_remote_server.py
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run specific test file
+uv run pytest tests/test_config.py
+
+# Run with coverage
+uv run pytest --cov=telnyx_mcp_server
+```
+
+### Code Quality
+
+```bash
+# Format code
+uv run ruff format .
+
+# Lint code
+uv run ruff check .
+
+# Type checking (if mypy is added)
+uv run mypy src/
+```
+
+### Managing Dependencies
+
+```bash
+# Add a new dependency
+uv add requests
+
+# Add a development dependency
+uv add --dev pytest-mock
+
+# Update dependencies
+uv sync
+
+# Update specific package
+uv add 'fastapi>=0.115.0'
+
+# Remove a dependency
+uv remove package-name
+```
+
+### Working with uv
+
+Key benefits of uv:
+- **No virtual environment activation needed** - `uv run` automatically uses the project environment
+- **Fast** - 10-100x faster than traditional package managers
+- **Reproducible** - `uv.lock` ensures everyone gets the same versions
+- **Simple** - One tool for all Python package management
+
+Common commands:
+```bash
+# Show project dependencies tree
+uv tree
+
+# Export requirements (if needed for compatibility)
+uv export --format requirements-txt > requirements.txt
+```
+
+For more details, see the [uv documentation](https://docs.astral.sh/uv/).
 
 3. Create a `.env` file and add your Telnyx API key:
 ```bash
@@ -345,68 +438,13 @@ pytest
 5. Install the server in Claude Desktop: `mcp install src/telnyx_mcp_server/server.py`
 6. Debug and test locally with MCP Inspector: `mcp dev src/telnyx_mcp_server/server.py`
 
-## Code Quality with Ruff
+## Contributing
 
-This project uses [Ruff](https://docs.astral.sh/ruff/) for linting and formatting Python code. Ruff is a fast Python linter and formatter written in Rust, designed to replace multiple Python code quality tools with a single, unified tool.
+See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed development instructions including code quality tools.
 
-### Installing Ruff
+## License
 
-Ruff is included in the development dependencies. Install it with:
-
-```bash
-uv pip install -e ".[dev]"
-```
-
-### Using Ruff
-
-#### Linting
-
-To check your code for issues:
-
-```bash
-ruff check .
-```
-
-To automatically fix issues where possible:
-
-```bash
-ruff check --fix .
-```
-
-#### Formatting
-
-To format your code:
-
-```bash
-ruff format .
-```
-
-### Pre-commit Workflow
-
-For the best development experience, run these commands before committing changes:
-
-```bash
-# Format code
-ruff format .
-
-# Fix linting issues
-ruff check --fix .
-
-# Run tests
-pytest
-```
-
-### Configuration
-
-Ruff is configured in the `pyproject.toml` file. The configuration includes:
-
-- Code style rules based on PEP 8
-- Import sorting
-- Docstring style checking (Google style)
-- Code complexity checks
-- And more
-
-See the `[tool.ruff]` section in `pyproject.toml` for the complete configuration.
+This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
 
 ## Troubleshooting
 
@@ -434,3 +472,7 @@ One common cause is an existing ngrok process running in the background, potenti
 *   **Check for running processes:** Use commands like `ps aux | grep telnyx-mcp-server` (Linux/macOS) or check Task Manager (Windows) for any lingering `telnyx-mcp-server` processes. Since ngrok is managed internally by the server, you typically won't see a separate 'ngrok' process.
 *   **Kill old processes:** If found, terminate these old processes.
 *   **Check logs:** Review the server logs (locations mentioned above) for specific error messages related to ngrok or server startup.
+
+## Development
+
+For development setup, testing, code quality guidelines, and contribution instructions, see the [Development Guide](DEVELOPMENT.md).

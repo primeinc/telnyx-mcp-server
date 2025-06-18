@@ -25,6 +25,7 @@ from .webhook import (
     stop_webhook_handler,
 )
 
+
 def parse_args(args=None) -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Telnyx MCP Server")

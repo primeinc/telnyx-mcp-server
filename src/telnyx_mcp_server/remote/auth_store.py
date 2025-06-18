@@ -1,16 +1,19 @@
-"""In-memory store for OAuth authorization codes and sessions."""
+"""Store for OAuth authorization codes and sessions with Redis and in-memory options."""
 
-import secrets
-import time
-from typing import Dict, Optional, Any
 from dataclasses import dataclass, field
 import logging
+import os
+import secrets
+import time
+from typing import Any, Dict, Optional, Union
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class AuthCodeData:
     """Data associated with an authorization code."""
+
     code: str
     azure_token: str
     azure_token_data: Dict[str, Any]
@@ -23,9 +26,11 @@ class AuthCodeData:
     pkce_challenge: Optional[str] = None
     pkce_method: Optional[str] = None
 
+
 @dataclass
 class SessionData:
     """OAuth session data."""
+
     session_id: str
     state: str
     redirect_uri: Optional[str] = None
@@ -36,13 +41,13 @@ class SessionData:
 
 class AuthStore:
     """Simple in-memory store for OAuth codes and sessions.
-    
+
     Note: This is for development/testing. Production should use Redis or a database.
     """
-    
+
     def __init__(self, code_ttl: int = 60, session_ttl: int = 3600):
         """Initialize the auth store.
-        
+
         Args:
             code_ttl: Time-to-live for auth codes in seconds (default: 60 seconds)
             session_ttl: Time-to-live for sessions in seconds (default: 1 hour)
@@ -51,7 +56,7 @@ class AuthStore:
         self._sessions: Dict[str, SessionData] = {}
         self.code_ttl = code_ttl
         self.session_ttl = session_ttl
-    
+
     def create_auth_code(
         self,
         azure_token: str,
@@ -60,16 +65,16 @@ class AuthStore:
         state: Optional[str] = None,
         redirect_uri: Optional[str] = None,
         pkce_challenge: Optional[str] = None,
-        pkce_method: Optional[str] = None
+        pkce_method: Optional[str] = None,
     ) -> str:
         """Create a new authorization code.
-        
+
         Returns:
             The generated authorization code
         """
         # Generate a cryptographically secure code
         code = secrets.token_urlsafe(32)
-        
+
         # Store the code data
         self._codes[code] = AuthCodeData(
             code=code,
@@ -82,49 +87,51 @@ class AuthStore:
             state=state,
             redirect_uri=redirect_uri,
             pkce_challenge=pkce_challenge,
-            pkce_method=pkce_method
+            pkce_method=pkce_method,
         )
-        
+
         # Clean up expired codes
         self._cleanup_expired_codes()
-        
-        logger.info(f"Created auth code for user: {user_info.get('email', 'unknown')}")
+
+        logger.info(
+            f"Created auth code for user: {user_info.get('email', 'unknown')}"
+        )
         return code
-    
+
     def get_auth_code(self, code: str) -> Optional[AuthCodeData]:
         """Retrieve auth code data.
-        
+
         Args:
             code: The authorization code
-            
+
         Returns:
             AuthCodeData if valid and not expired, None otherwise
         """
         data = self._codes.get(code)
-        
+
         if not data:
             logger.warning(f"Auth code not found: {code[:8]}...")
             return None
-        
+
         # Check if expired
         if time.time() > data.expires_at:
             logger.warning(f"Auth code expired: {code[:8]}...")
             del self._codes[code]
             return None
-        
+
         # Check if already used
         if data.used:
             logger.warning(f"Auth code already used: {code[:8]}...")
             return None
-        
+
         return data
-    
+
     def mark_code_used(self, code: str) -> bool:
         """Mark an authorization code as used.
-        
+
         Args:
             code: The authorization code
-            
+
         Returns:
             True if successfully marked, False if not found
         """
@@ -134,64 +141,64 @@ class AuthStore:
             logger.info(f"Marked auth code as used: {code[:8]}...")
             return True
         return False
-    
+
     def create_session(
         self,
         state: str,
         redirect_uri: Optional[str] = None,
         pkce_challenge: Optional[str] = None,
-        pkce_method: Optional[str] = None
+        pkce_method: Optional[str] = None,
     ) -> str:
         """Create a new OAuth session.
-        
+
         Returns:
             The session ID
         """
         session_id = secrets.token_urlsafe(32)
-        
+
         self._sessions[session_id] = SessionData(
             session_id=session_id,
             state=state,
             redirect_uri=redirect_uri,
             created_at=time.time(),
             pkce_challenge=pkce_challenge,
-            pkce_method=pkce_method
+            pkce_method=pkce_method,
         )
-        
+
         # Clean up expired sessions
         self._cleanup_expired_sessions()
-        
+
         logger.info(f"Created OAuth session: {session_id[:8]}...")
         return session_id
-    
+
     def get_session(self, session_id: str) -> Optional[SessionData]:
         """Get session data.
-        
+
         Args:
             session_id: The session ID
-            
+
         Returns:
             SessionData if found and not expired, None otherwise
         """
         data = self._sessions.get(session_id)
-        
+
         if not data:
             return None
-        
+
         # Check if expired
         if time.time() > (data.created_at + self.session_ttl):
             logger.warning(f"Session expired: {session_id[:8]}...")
             del self._sessions[session_id]
             return None
-        
+
         return data
-    
+
     def get_session_by_state(self, state: str) -> Optional[SessionData]:
         """Find a session by state parameter.
-        
+
         Args:
             state: The OAuth state parameter
-            
+
         Returns:
             SessionData if found, None otherwise
         """
@@ -202,13 +209,13 @@ class AuthStore:
                     continue
                 return session
         return None
-    
+
     def delete_session(self, session_id: str) -> bool:
         """Delete a session.
-        
+
         Args:
             session_id: The session ID
-            
+
         Returns:
             True if deleted, False if not found
         """
@@ -217,33 +224,72 @@ class AuthStore:
             logger.info(f"Deleted session: {session_id[:8]}...")
             return True
         return False
-    
+
     def _cleanup_expired_codes(self):
         """Remove expired authorization codes."""
         current_time = time.time()
         expired = [
-            code for code, data in self._codes.items()
+            code
+            for code, data in self._codes.items()
             if current_time > data.expires_at
         ]
         for code in expired:
             del self._codes[code]
-        
+
         if expired:
             logger.info(f"Cleaned up {len(expired)} expired auth codes")
-    
+
     def _cleanup_expired_sessions(self):
         """Remove expired sessions."""
         current_time = time.time()
         expired = [
-            sid for sid, data in self._sessions.items()
+            sid
+            for sid, data in self._sessions.items()
             if current_time > (data.created_at + self.session_ttl)
         ]
         for sid in expired:
             del self._sessions[sid]
-        
+
         if expired:
             logger.info(f"Cleaned up {len(expired)} expired sessions")
 
 
 # Global instance for the application
-auth_store = AuthStore()
+def create_auth_store() -> Union["AsyncRedisAuthStore", "AuthStore"]:
+    """Create appropriate auth store based on configuration."""
+    # Check if Redis should be used
+    redis_url = os.getenv("REDIS_URL")
+    use_redis = os.getenv("USE_REDIS", "true").lower() in ("true", "1", "yes")
+    environment = os.getenv("ENVIRONMENT", "development")
+
+    # In development/test, prefer in-memory unless explicitly configured
+    if environment in ("development", "test") and not redis_url:
+        logger.info(
+            "Using in-memory auth store for development/test environment"
+        )
+        return AuthStore()
+
+    # Try to use Redis if available and configured
+    if use_redis:
+        if not redis_url:
+            logger.warning(
+                "Redis auth store requested but REDIS_URL not provided, falling back to in-memory"
+            )
+            return AuthStore()
+
+        try:
+            from .redis_auth_store import AsyncRedisAuthStore
+
+            logger.info("Using Redis-backed auth store")
+            return AsyncRedisAuthStore(redis_url=redis_url)
+        except ImportError:
+            logger.warning(
+                "Redis auth store requested but dependencies not available, falling back to in-memory"
+            )
+            return AuthStore()
+
+    logger.info("Using in-memory auth store")
+    return AuthStore()
+
+
+auth_store = create_auth_store()

@@ -5,7 +5,8 @@ on:
     branches: [ main ]
     paths:
       - 'src/telnyx_mcp_server/remote/**'
-      - 'requirements.txt'
+      - 'pyproject.toml'
+      - 'uv.lock'
       - '.github/workflows/remote-server-tests.yml'
 
 env:
@@ -19,11 +20,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should-run: ${{ steps.check.outputs.should-run }}
-      
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-      
+
     - name: Check if remote server files changed
       id: check
       run: |
@@ -32,7 +33,7 @@ jobs:
           # Fetch the base branch to compare changes
           git fetch origin ${{ github.base_ref }} --depth=1
           # Check for changes in the specified paths
-          if git diff --name-only origin/${{ github.base_ref }} | grep -E '^src/telnyx_mcp_server/remote/|^requirements.txt$|^\.github/workflows/remote-server-tests.yml$'; then
+          if git diff --name-only origin/${{ github.base_ref }} | grep -E '^src/telnyx_mcp_server/remote/|^pyproject.toml$|^uv.lock$|^\.github/workflows/remote-server-tests.yml$'; then
             echo "should-run=true" >> $GITHUB_OUTPUT
             echo "✅ Running tests for remote server changes in PR"
           else
@@ -56,20 +57,22 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-    
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-        cache-dependency-path: requirements.txt
-    
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest pytest-asyncio httpx
-    
+        uv sync --frozen --all-extras
+
     - name: Validate environment setup
       env:
         TELNYX_API_KEY: dummy-key-for-testing
@@ -80,7 +83,7 @@ jobs:
         echo "✅ PYTHONPATH: $PYTHONPATH"
         echo "✅ Environment variables set"
         ls -la src/telnyx_mcp_server/remote/
-    
+
     - name: Test remote server imports and functionality
       env:
         TELNYX_API_KEY: dummy-key-for-testing
@@ -88,33 +91,34 @@ jobs:
       run: |
         cd ${{ github.workspace }}
         echo "Running remote server test script..."
-        python scripts/test_remote_server.py
-    
+        uv run scripts/test_remote_server.py
+
     - name: Test FastAPI app initialization
       env:
         TELNYX_API_KEY: dummy-key-for-testing
         PYTHONPATH: ${{ github.workspace }}/src
       run: |
         echo "Testing FastAPI app initialization..."
-        python -c |
-          import sys
-          sys.path.insert(0, 'src')
-          from telnyx_mcp_server.remote.server import app
-          print('✅ FastAPI app imports successfully')
-          print(f'✅ App type: {type(app)}')
-    
+        uv run python -c "
+        import sys
+        sys.path.insert(0, 'src')
+        from telnyx_mcp_server.remote.server import app
+        print('✅ FastAPI app imports successfully')
+        print(f'✅ App type: {type(app)}')
+        "
+
     - name: Check OAuth and MCP endpoints
       env:
         TELNYX_API_KEY: dummy-key-for-testing
         PYTHONPATH: ${{ github.workspace }}/src
       run: |
         echo "Checking OAuth and MCP endpoints..."
-        python -c "
+        uv run python -c "
         import sys
         sys.path.insert(0, 'src')
         from telnyx_mcp_server.remote.server import app
         routes = [r.path for r in app.routes]
-        
+
         # Check for core OAuth and MCP endpoints that should exist
         required = ['/auth/callback', '/mcp', '/authorize', '/token']
         missing = [r for r in required if r not in routes]
@@ -123,25 +127,25 @@ jobs:
             exit(1)
         else:
             print('✅ All required OAuth and MCP routes present')
-        
+
         # List available routes for debugging
         print(f'📋 Available routes: {sorted(set(routes))}')
-        
+
         # Additional validation
         print(f'✅ Total routes found: {len(set(routes))}')
         "
-        
+
     - name: Test server configuration
       env:
         TELNYX_API_KEY: dummy-key-for-testing
         PYTHONPATH: ${{ github.workspace }}/src
       run: |
         echo "Testing server configuration..."
-        python -c "
+        uv run python -c "
         import sys
         sys.path.insert(0, 'src')
         from telnyx_mcp_server.remote.server import TelnyxMCPServer
-        
+
         # Test server initialization
         server = TelnyxMCPServer()
         print('✅ TelnyxMCPServer initializes successfully')
@@ -152,13 +156,13 @@ jobs:
     needs: [validate, test]
     if: always()
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Test Results Summary
       run: |
         echo "## Remote Server Tests Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        
+
         if [ "${{ needs.validate.result }}" = "success" ] && [ "${{ needs.test.result }}" = "success" ]; then
           echo "✅ **All tests passed successfully!**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

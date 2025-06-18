@@ -10,7 +10,7 @@ try:
     import ngrok
 except ImportError as e:
     raise ImportError(
-        f"Failed to import ngrok. Please install it with 'pip install ngrok>=0.9.0'. Error: {e}"
+        f"Failed to import ngrok. Please install it with 'uv add ngrok' or 'uv add --optional webhook ngrok'. Error: {e}"
     )
 
 from ..config import settings
