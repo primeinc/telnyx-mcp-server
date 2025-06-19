@@ -21,13 +21,22 @@ param authClientId string = ''
 @description('Enable Built-in Authentication')
 param enableBuiltInAuth bool = false
 
+@description('User-assigned managed identity resource ID')
+param userAssignedIdentityId string
+
+@description('User-assigned managed identity client ID for FIC')
+param userAssignedIdentityClientId string
+
 // Web App
 resource web 'Microsoft.Web/sites@2022-03-01' = {
   name: name
   location: location
   tags: union(tags, { 'azd-service-name': 'web' })
   identity: {
-    type: 'SystemAssigned'
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${userAssignedIdentityId}': {}
+    }
   }
   properties: {
     serverFarmId: appServicePlanId
@@ -42,10 +51,13 @@ resource web 'Microsoft.Web/sites@2022-03-01' = {
       // Startup command for Gunicorn with Uvicorn worker
       appCommandLine: 'gunicorn -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --access-logfile - --error-logfile - --log-level debug telnyx_mcp_server.remote.server:app'
       // loadCertificates is Windows-only, not needed for Linux App Service
-      appSettings: [for setting in items(appSettings): {
+      appSettings: concat([for setting in items(appSettings): {
         name: setting.key
         value: setting.value
-      }]
+      }], enableBuiltInAuth ? [{
+        name: 'OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID'
+        value: userAssignedIdentityClientId
+      }] : [])
     }
   }
 }
@@ -76,45 +88,10 @@ resource webLogs 'Microsoft.Web/sites/config@2022-03-01' = {
   }
 }
 
-// Configure Built-in Authentication (Easy Auth) with Federated Identity Credentials
-resource configAuth 'Microsoft.Web/sites/config@2022-03-01' = if (enableBuiltInAuth) {
-  parent: web
-  name: 'authsettingsV2'
-  properties: {
-    globalValidation: {
-      requireAuthentication: true
-      unauthenticatedClientAction: 'RedirectToLoginPage'
-      redirectToProvider: 'azureactivedirectory'
-      excludedPaths: [
-        '/.well-known/oauth-authorization-server'
-        '/.well-known/mcp-oauth-metadata'
-        '/health'
-      ]
-    }
-    identityProviders: {
-      azureActiveDirectory: {
-        enabled: true
-        registration: {
-          clientId: authClientId
-          // This special value tells Azure to use managed identity with FIC
-          clientSecretSettingName: 'OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID'
-          openIdIssuer: '${environment().authentication.loginEndpoint}${tenant().tenantId}/v2.0'
-        }
-        validation: {
-          defaultAuthorizationPolicy: {
-            allowedApplications: []
-          }
-        }
-      }
-    }
-    login: {
-      tokenStore: {
-        enabled: true
-      }
-    }
-  }
-}
+// Auth configuration is now handled in a separate web-auth-update module
+// to ensure proper deployment order (after app registration is created)
 
 output uri string = 'https://${web.properties.defaultHostName}'
 output name string = web.name
-output principalId string = web.identity.principalId
+// For user-assigned identity, we output the identity we're using
+output principalId string = userAssignedIdentityId

@@ -17,6 +17,11 @@ resource configAuth 'Microsoft.Web/sites/config@2022-03-01' = {
       requireAuthentication: true
       unauthenticatedClientAction: 'RedirectToLoginPage'
       redirectToProvider: 'azureactivedirectory'
+      excludedPaths: [
+        '/.well-known/oauth-authorization-server'
+        '/.well-known/mcp-oauth-metadata'
+        '/health'
+      ]
     }
     identityProviders: {
       azureActiveDirectory: {

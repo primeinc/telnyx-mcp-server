@@ -135,6 +135,18 @@ module githubRBAC './core/identity/github-fic-rbac.bicep' = if (createGitHubFIC)
 
 // REMOVED: Certificate thumbprint no longer needed with Built-in Auth
 
+// Create user-assigned managed identity for Built-in Auth with FIC
+// This is required for the OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID pattern
+module webIdentity './core/identity/managed-identity.bicep' = {
+  name: 'web-identity'
+  scope: rg
+  params: {
+    name: '${abbrs.webSitesAppService}${workloadName}-identity'
+    location: location
+    tags: tags
+  }
+}
+
 // The application frontend
 module web './app/web.bicep' = {
   name: 'web'
@@ -146,6 +158,8 @@ module web './app/web.bicep' = {
     appServicePlanId: appServicePlan.outputs.id
     enableBuiltInAuth: !empty(existingOauthAppClientId)  // Only enable if we have an OAuth app
     authClientId: existingOauthAppClientId
+    userAssignedIdentityId: webIdentity.outputs.id
+    userAssignedIdentityClientId: webIdentity.outputs.clientId
     appSettings: {
       // Application Insights
       APPLICATIONINSIGHTS_CONNECTION_STRING: monitoring.outputs.applicationInsightsConnectionString
@@ -191,7 +205,8 @@ module web './app/web.bicep' = {
       PYTHON_ENABLE_GUNICORN_MULTIWORKERS: 'true'
       GUNICORN_CMD_ARGS: environment == 'prod' ? '--log-level warning' : environment == 'staging' ? '--log-level info' : '--log-level debug'
       WEBSITES_PORT: '8000'
-      WEBSITE_RUN_FROM_PACKAGE: '0'
+      WEBSITE_RUN_FROM_PACKAGE: '1'  // Run directly from ZIP package
+      Oryx_EnablePythonNixAlias: 'true'  // Create python -> python3 symlink
       WEBSITES_CONTAINER_START_TIME_LIMIT: '1800'
       WEBSITES_ENABLE_APP_SERVICE_STORAGE: 'false'
       WEBSITE_WEBDEPLOY_USE_SCM: 'true'
@@ -208,7 +223,7 @@ module oauthAppFIC './core/identity/app-registration-fic.bicep' = if (createOAut
     clientAppName: '${oauthAppName}-${environment}'
     clientAppDisplayName: oauthAppDisplayName
     webAppEndpoint: 'https://${abbrs.webSitesAppService}${workloadName}-${environment}-${locationShortName}-001.azurewebsites.net'
-    webAppIdentityId: web.outputs.principalId  // App Service managed identity
+    webAppIdentityId: webIdentity.outputs.principalId  // User-assigned managed identity principal ID
     issuer: '${az.environment().authentication.loginEndpoint}${tenant().tenantId}/v2.0'
   }
 }
@@ -231,7 +246,7 @@ module webKeyVaultAccess './core/security/keyvault-access.bicep' = if (useKeyVau
   scope: rg
   params: {
     keyVaultName: keyVault.outputs.name
-    principalId: web.outputs.principalId
+    principalId: webIdentity.outputs.principalId
   }
 }
 

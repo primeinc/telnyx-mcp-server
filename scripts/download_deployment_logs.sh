@@ -20,13 +20,13 @@ echo "1. Downloading deployment logs..."
 az webapp log download \
     --name "$APP_NAME" \
     --resource-group "$RESOURCE_GROUP" \
-    --output-path "$OUTPUT_DIR/logs.zip" \
+    --log-file "$OUTPUT_DIR/logs.zip" \
     2>&1 | tee "$OUTPUT_DIR/download.log"
 
 # Extract logs
 echo "2. Extracting logs..."
 cd "$OUTPUT_DIR"
-unzip -q logs.zip
+python3 -m zipfile -e logs.zip . 2>/dev/null || echo "Could not extract logs.zip"
 
 # Look for Oryx build logs
 echo "3. Looking for Oryx build logs..."
@@ -52,9 +52,9 @@ grep -r -i "error\|fail\|exception\|traceback" . | grep -v ".zip" | head -50
 
 # Check recent deployment status
 echo "6. Recent deployment status:"
-az webapp deployment list \
+az webapp deployment source show \
     --name "$APP_NAME" \
     --resource-group "$RESOURCE_GROUP" \
-    --output table
+    --output json 2>/dev/null || echo "Could not get deployment status"
 
 echo "Logs saved to: $OUTPUT_DIR"
