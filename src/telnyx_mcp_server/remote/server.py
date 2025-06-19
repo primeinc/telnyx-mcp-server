@@ -31,7 +31,6 @@ from .auth import (
     AZURE_TOKEN_URL,
     AuthService,
     get_current_user,
-    optional_auth,
 )
 from .auth_store import auth_store
 from .schema_fixer import fix_tool_schema, validate_tool_arguments
@@ -539,16 +538,19 @@ async def log_requests(request: Request, call_next):
 @app.get("/")
 async def root(
     request: Request,
-    current_user: Optional[Dict[str, Any]] = Depends(optional_auth),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Root endpoint - handles both server info and SSE streams based on Accept header."""
-    logger.info("=" * 50)
-    logger.info("ROOT GET endpoint called")
-    logger.info(f"Request URL: {request.url}")
-    logger.info(f"All headers: {dict(request.headers)}")
-    logger.info(f"Current user: {current_user}")
-    logger.info(f"Accept header: {request.headers.get('accept', 'None')}")
-    logger.info("=" * 50)
+    logger.info(
+        "ROOT GET endpoint called",
+        url=str(request.url),
+        current_user=current_user,
+        accept=request.headers.get("accept", "None"),
+        client_ip=request.headers.get(
+            "x-client-ip", request.client.host if request.client else "unknown"
+        ),
+    )
+    logger.debug(f"Request headers: {dict(request.headers)}")
 
     # Check if this is an SSE request
     accept_header = request.headers.get("accept", "")
@@ -578,14 +580,17 @@ async def root(
 @app.post("/")
 async def root_post(
     request: Request,
-    current_user: Optional[Dict[str, Any]] = Depends(optional_auth),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """POST endpoint at root - handles MCP protocol requests."""
-    logger.info("=" * 50)
-    logger.info("ROOT POST endpoint called - redirecting to MCP handler")
-    logger.info(f"Request URL: {request.url}")
-    logger.info(f"Current user: {current_user}")
-    logger.info("=" * 50)
+    logger.info(
+        "ROOT POST endpoint called - redirecting to MCP handler",
+        url=str(request.url),
+        current_user=current_user,
+        client_ip=request.headers.get(
+            "x-client-ip", request.client.host if request.client else "unknown"
+        ),
+    )
 
     # Claude Desktop is trying to POST to root - handle it as MCP protocol
     return await mcp_endpoint(request, current_user)
@@ -1368,24 +1373,28 @@ async def register(request: Request):
 @app.post("/mcp")
 async def mcp_endpoint(
     request: Request,
-    current_user: Optional[Dict[str, Any]] = Depends(optional_auth),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """MCP endpoint implementing Streamable HTTP transport.
 
     Authentication is required for all methods except initialize.
     """
     # Comprehensive logging
-    logger.info("=" * 50)
-    logger.info("MCP POST endpoint called")
-    logger.info(f"Request URL: {request.url}")
-    logger.info(f"Request method: {request.method}")
-    logger.info(f"All headers: {dict(request.headers)}")
-    auth_header = request.headers.get("authorization", "None")
-    logger.info(f"Authorization header: {auth_header}")
-    logger.info(f"Current user from auth: {current_user}")
-    logger.info(f"Accept header: {request.headers.get('accept', 'None')}")
-    logger.info(f"Content-Type: {request.headers.get('content-type', 'None')}")
-    logger.info("=" * 50)
+    logger.info(
+        "MCP POST endpoint called",
+        url=str(request.url),
+        method=request.method,
+        auth_header=request.headers.get("authorization", "None"),
+        current_user=current_user,
+        accept=request.headers.get("accept", "None"),
+        content_type=request.headers.get("content-type", "None"),
+        client_ip=request.headers.get(
+            "x-client-ip", request.client.host if request.client else "unknown"
+        ),
+        session_id=request.headers.get("mcp-session-id", "None"),
+    )
+    # Log all headers separately for debugging
+    logger.debug(f"Request headers: {dict(request.headers)}")
 
     # Get base URL first
     base_url = get_base_url_from_request(request)
@@ -1394,7 +1403,7 @@ async def mcp_endpoint(
     message = None
     try:
         body = await request.body()
-        logger.info(
+        logger.debug(
             f"Request body: {body.decode('utf-8') if body else 'None'}"
         )
         message = json.loads(body)
@@ -1464,11 +1473,19 @@ async def mcp_endpoint(
                 msg.get("method") for msg in message if isinstance(msg, dict)
             ]
             logger.info(
-                f"MCP batch request: {methods} (user: {current_user.get('email') if current_user else 'anonymous'})"
+                "MCP batch request",
+                methods=methods,
+                user_email=current_user.get("email")
+                if current_user
+                else "anonymous",
             )
         else:
             logger.info(
-                f"MCP request: {message.get('method')} (user: {current_user.get('email') if current_user else 'anonymous'})"
+                "MCP request",
+                method=message.get("method"),
+                user_email=current_user.get("email")
+                if current_user
+                else "anonymous",
             )
 
     # Get base URL for OAuth discovery
@@ -1533,20 +1550,24 @@ async def mcp_endpoint(
 @app.get("/mcp")
 async def mcp_sse_stream(
     request: Request,
-    current_user: Optional[Dict[str, Any]] = Depends(optional_auth),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """GET endpoint for server-initiated SSE stream."""
     # Comprehensive logging
-    logger.info("=" * 50)
-    logger.info("MCP GET endpoint called")
-    logger.info(f"Request URL: {request.url}")
-    logger.info(f"Request method: {request.method}")
-    logger.info(f"All headers: {dict(request.headers)}")
-    auth_header = request.headers.get("authorization", "None")
-    logger.info(f"Authorization header: {auth_header}")
-    logger.info(f"Current user from auth: {current_user}")
-    logger.info(f"Accept header: {request.headers.get('accept', 'None')}")
-    logger.info("=" * 50)
+    logger.info(
+        "MCP GET endpoint called",
+        url=str(request.url),
+        method=request.method,
+        auth_header=request.headers.get("authorization", "None"),
+        current_user=current_user,
+        accept=request.headers.get("accept", "None"),
+        client_ip=request.headers.get(
+            "x-client-ip", request.client.host if request.client else "unknown"
+        ),
+        session_id=request.headers.get("mcp-session-id", "None"),
+    )
+    # Log all headers separately for debugging
+    logger.debug(f"Request headers: {dict(request.headers)}")
 
     # SSE streams also require authentication
     if not current_user:

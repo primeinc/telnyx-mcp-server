@@ -306,7 +306,13 @@ def configure_structlog(
         processors.append(JSONRenderer())
     else:
         # Use console renderer for development and Azure App Service
-        processors.append(structlog.dev.ConsoleRenderer())
+        # No colors for Azure - it doesn't support them
+        processors.append(
+            structlog.dev.ConsoleRenderer(
+                colors=False,
+                exception_formatter=structlog.dev.plain_traceback,
+            )
+        )
 
     # Configure structlog
     structlog.configure(
