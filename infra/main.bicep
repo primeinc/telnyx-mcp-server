@@ -177,6 +177,20 @@ module githubRBAC './core/identity/github-fic-rbac.bicep' = if (createGitHubFIC)
   }
 }
 
+// Web certificate for OAuth authentication
+resource webCertificate 'Microsoft.Web/certificates@2022-03-01' = if (createOAuthApp && useKeyVault) {
+  name: 'oauth-app-cert'
+  location: location
+  scope: rg
+  properties: {
+    keyVaultId: keyVault.outputs.id
+    keyVaultSecretName: 'oauth-app-cert'
+  }
+  dependsOn: [
+    certificate  // Ensure certificate is created first
+  ]
+}
+
 // The application frontend
 module web './app/web.bicep' = {
   name: 'web'
@@ -186,6 +200,7 @@ module web './app/web.bicep' = {
     location: location
     tags: tags
     appServicePlanId: appServicePlan.outputs.id
+    certificateName: createOAuthApp && useKeyVault ? webCertificate.name : ''
     appSettings: {
       // Application Insights
       APPLICATIONINSIGHTS_CONNECTION_STRING: monitoring.outputs.applicationInsightsConnectionString
@@ -201,10 +216,10 @@ module web './app/web.bicep' = {
       AZURE_CLIENT_ID: createOAuthApp ? oauthApp.outputs.appId : existingOauthAppClientId
       AZURE_TENANT_ID: tenant().tenantId
       AZURE_REDIRECT_URI: currentEnvRedirectUri
-      AZURE_CERTIFICATE_THUMBPRINT: createOAuthApp && useKeyVault ? certificate.outputs.certThumbprint : ''
+      AZURE_CERTIFICATE_THUMBPRINT: createOAuthApp && useKeyVault ? webCertificate.properties.thumbprint : ''
 
       // Tell App Service to load the certificate
-      WEBSITE_LOAD_CERTIFICATES: createOAuthApp && useKeyVault ? certificate.outputs.certThumbprint : ''
+      WEBSITE_LOAD_CERTIFICATES: createOAuthApp && useKeyVault ? webCertificate.properties.thumbprint : ''
 
       // JWT Configuration
       JWT_SECRET_KEY: useKeyVault ? '@Microsoft.KeyVault(VaultName=${keyVault.outputs.name};SecretName=jwt-secret-key)' : jwtSecretKey

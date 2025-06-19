@@ -5,6 +5,8 @@ param tags object = {}
 // App Service Plan ID
 param appServicePlanId string
 
+// Certificate name to load (optional)
+param certificateName string = ''
 
 // App Settings
 @secure()
@@ -31,6 +33,7 @@ resource web 'Microsoft.Web/sites@2022-03-01' = {
       minTlsVersion: '1.2'
       scmMinTlsVersion: '1.2'
       healthCheckPath: '/health'
+      loadCertificates: !empty(certificateName) ? [certificateName] : []
       appSettings: [for setting in items(appSettings): {
         name: setting.key
         value: setting.value
