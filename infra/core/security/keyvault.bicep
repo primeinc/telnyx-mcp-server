@@ -9,7 +9,7 @@ param enablePurgeProtection bool = false
 param softDeleteRetentionInDays int = 90
 
 @description('Enable RBAC authorization instead of access policies')
-param enableRbacAuthorization bool = true
+param enableRbacAuthorization bool = false // Set to false - App Service certificate import doesn't support RBAC
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: name
@@ -31,6 +31,16 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
       bypass: 'AzureServices'
       defaultAction: 'Allow'
     }
+    accessPolicies: enableRbacAuthorization ? [] : [
+      {
+        tenantId: tenant().tenantId
+        objectId: 'abfa0a7c-a6b6-4736-8310-5855508787cd' // Microsoft Azure App Service
+        permissions: {
+          secrets: ['get', 'list']
+          certificates: ['get', 'list', 'create', 'import', 'update', 'managecontacts', 'getissuers', 'listissuers', 'setissuers', 'deleteissuers', 'manageissuers']
+        }
+      }
+    ]
   }, enablePurgeProtection ? {
     enablePurgeProtection: true
   } : {})

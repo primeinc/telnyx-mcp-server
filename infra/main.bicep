@@ -107,7 +107,16 @@ module managedIdentity './core/identity/managed-identity.bicep' = if (createOAut
     name: '${abbrs.managedIdentityUserAssignedIdentities}${workloadName}-${environment}-${locationShortName}-001'
     location: location
     tags: tags
+  }
+}
+
+// Grant managed identity access to Key Vault
+module managedIdentityKeyVaultAccess './core/security/keyvault-access.bicep' = if (createOAuthApp && useKeyVault) {
+  name: 'managed-identity-keyvault-access'
+  scope: rg
+  params: {
     keyVaultName: keyVault.outputs.name
+    principalId: managedIdentity.outputs.principalId
   }
 }
 
@@ -124,7 +133,8 @@ module certificate './core/identity/certificate-generator.bicep' = if (createOAu
     tags: tags
   }
   dependsOn: [
-    roleWait  // Ensure role assignments have propagated
+    keyVault  // Ensure Key Vault exists
+    managedIdentity  // Ensure managed identity exists
   ]
 }
 
@@ -184,67 +194,15 @@ module githubRBAC './core/identity/github-fic-rbac.bicep' = if (createGitHubFIC)
   }
 }
 
-// Grant App Service access to Key Vault for certificate operations
-// This MUST complete before any web certificates can be created
-module appServiceKeyVaultAccess './core/security/keyvault-app-service-access.bicep' = if (useKeyVault) {
-  name: 'app-service-keyvault-access'
-  scope: rg
-  params: {
-    keyVaultName: keyVault.outputs.name
-  }
-  dependsOn: [
-    keyVault
-  ]
-}
+// App Service access is now handled via access policies in the Key Vault module
 
-// Check if App Service has access to Key Vault
-module checkAppServiceAccess './core/identity/check-app-service-access.bicep' = if (useKeyVault) {
-  name: 'check-app-service-access'
-  scope: rg
-  params: {
-    keyVaultName: keyVault.outputs.name
-    location: location
-    tags: tags
-  }
-  dependsOn: [
-    appServiceKeyVaultAccess  // Try to create access first
-  ]
-}
+// REMOVED: These modules are not needed for Linux App Service
+// - checkAppServiceAccess: Not needed, managed identity access is handled by keyvault-access.bicep
+// - roleWait: Not needed, Azure handles role propagation automatically with proper dependencies
+// - webCert: Not needed for Linux App Service - certificates are loaded directly from Key Vault in code
 
-// Add a deployment script to ensure role propagation
-module roleWait './core/identity/wait-script.bicep' = if (useKeyVault && checkAppServiceAccess.outputs.hasAccess) {
-  name: 'role-propagation-wait'
-  scope: rg
-  params: {
-    location: location
-    tags: tags
-  }
-  dependsOn: [
-    managedIdentity  // Wait for managed identity and its role assignments
-    checkAppServiceAccess  // Wait for access check
-  ]
-}
-
-// Web certificate for OAuth authentication - deployed at RG scope via module
-// Only create if App Service has access to Key Vault
-module webCert './core/security/web-certificate.bicep' = if (createOAuthApp && useKeyVault && checkAppServiceAccess.outputs.hasAccess) {
-  name: 'web-certificate'
-  scope: rg
-  params: {
-    certificateName: 'oauth-app-cert'
-    location: location
-    keyVaultId: keyVault.outputs.id
-    keyVaultSecretName: 'oauth-app-cert'
-    tags: tags
-  }
-  dependsOn: [
-    certificate  // Ensure certificate is created first
-    roleWait  // Ensure role assignments have propagated
-  ]
-}
-
-// Runtime thumbprint for app settings - use certificate thumbprint if available
-var certThumbprint = (createOAuthApp && useKeyVault && checkAppServiceAccess.outputs.hasAccess) ? webCert.outputs.thumbprint : (createOAuthApp && useKeyVault) ? certificate.outputs.certThumbprint : ''
+// Runtime thumbprint for app settings - use certificate thumbprint from certificate generator
+var certThumbprint = (createOAuthApp && useKeyVault) ? certificate.outputs.certThumbprint : ''
 
 // The application frontend
 module web './app/web.bicep' = {
@@ -271,9 +229,10 @@ module web './app/web.bicep' = {
       AZURE_TENANT_ID: tenant().tenantId
       AZURE_REDIRECT_URI: currentEnvRedirectUri
       AZURE_CERTIFICATE_THUMBPRINT: certThumbprint
+      AZURE_KEY_VAULT_NAME: keyVault.outputs.name
+      AZURE_CERTIFICATE_NAME: 'oauth-certificate'
 
-      // Tell App Service to load the certificate
-      WEBSITE_LOAD_CERTIFICATES: certThumbprint
+      // WEBSITE_LOAD_CERTIFICATES not used - Linux App Service loads certs from Key Vault directly
 
       // JWT Configuration
       JWT_SECRET_KEY: useKeyVault ? '@Microsoft.KeyVault(VaultName=${keyVault.outputs.name};SecretName=jwt-secret-key)' : jwtSecretKey

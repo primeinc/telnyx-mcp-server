@@ -26,6 +26,9 @@ dependencies = [
     "redis>=4.0.0",
     "structlog>=23.0.0",
     "fakeredis>=2.0.0",
+    "azure-keyvault-certificates>=4.7.0",
+    "azure-keyvault-secrets>=4.7.0",
+    "cryptography>=41.0.0",
 ]
 
 [project.optional-dependencies]

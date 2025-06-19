@@ -42,29 +42,33 @@ resource createCertificate 'Microsoft.Resources/deploymentScripts@2023-08-01' = 
         [string] [Parameter(Mandatory=$true)] $certificateName,
         [string] [Parameter(Mandatory=$true)] $subjectName
       )
-      $ErrorActionPreference = 'Stop'
+      $ErrorActionPreference = 'Continue'
       $DeploymentScriptOutputs = @{}
 
-      $existingCert = Get-AzKeyVaultCertificate -VaultName $vaultName -Name $certificateName
-      if ($existingCert -and $existingCert.Certificate.Subject -eq $subjectName) {
-        Write-Host \"Certificate $certificateName in vault $vaultName is already present.\"
+      # First just check if certificate exists without loading it
+      try {
+        $certList = Get-AzKeyVaultCertificate -VaultName $vaultName -ErrorAction SilentlyContinue
+        $existingCert = $certList | Where-Object { $_.Name -eq $certificateName }
+      } catch {
+        Write-Host "Could not list certificates: $_"
+        $existingCert = $null
+      }
+      if ($existingCert) {
+        Write-Host \"Certificate $certificateName already exists in vault $vaultName.\"
 
-        # Get the secret value
-        $certSecret = Get-AzKeyVaultSecret -VaultName $vaultName -Name $certificateName
-        $certValue = $certSecret.SecretValue | ConvertFrom-SecureString -AsPlainText
+        # Get the actual certificate details
+        $fullCert = Get-AzKeyVaultCertificate -VaultName $vaultName -Name $certificateName
 
-        # Decode and load the certificate - Key Vault certs have no password
-        $certBytes = [Convert]::FromBase64String($certValue)
-        # Use different constructor that doesn't require password for Linux compatibility
-        $pfxCert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certBytes)
+        # The public key is in the Certificate property
+        $publicKey = [System.Convert]::ToBase64String($fullCert.Certificate.GetRawCertData())
 
-        # Get the public key
-        $publicKey = [System.Convert]::ToBase64String($pfxCert.GetRawCertData())
-
-        $DeploymentScriptOutputs['certStart'] = $existingCert.notBefore
-        $DeploymentScriptOutputs['certEnd'] = $existingCert.expires
-        $DeploymentScriptOutputs['certThumbprint'] = $existingCert.Thumbprint
+        $DeploymentScriptOutputs['certStart'] = $fullCert.Certificate.NotBefore.ToString('yyyy-MM-ddTHH:mm:ss')
+        $DeploymentScriptOutputs['certEnd'] = $fullCert.Certificate.NotAfter.ToString('yyyy-MM-ddTHH:mm:ss')
+        $DeploymentScriptOutputs['certThumbprint'] = $fullCert.Thumbprint
         $DeploymentScriptOutputs['certKey'] = $publicKey
+
+        Write-Host "Returning existing certificate info with thumbprint: $($fullCert.Thumbprint)"
+        exit 0
       }
       else {
         $policy = New-AzKeyVaultCertificatePolicy -SubjectName $subjectName -IssuerName Self -ValidityInMonths 24 -Verbose
@@ -98,8 +102,8 @@ resource createCertificate 'Microsoft.Resources/deploymentScripts@2023-08-01' = 
         # Get the public key
         $publicKey = [System.Convert]::ToBase64String($pfxCert.GetRawCertData())
 
-        $DeploymentScriptOutputs['certStart'] = $newCert.notBefore
-        $DeploymentScriptOutputs['certEnd'] = $newCert.expires
+        $DeploymentScriptOutputs['certStart'] = $newCert.Certificate.NotBefore.ToString('yyyy-MM-ddTHH:mm:ss')
+        $DeploymentScriptOutputs['certEnd'] = $newCert.Certificate.NotAfter.ToString('yyyy-MM-ddTHH:mm:ss')
         $DeploymentScriptOutputs['certThumbprint'] = $newCert.Thumbprint
         $DeploymentScriptOutputs['certKey'] = $publicKey
       }

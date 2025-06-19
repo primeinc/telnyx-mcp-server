@@ -1,11 +1,15 @@
 """Azure OAuth authentication for remote MCP server."""
 
+import base64
 from datetime import datetime, timedelta
 import os
 import time
 from typing import Any, Dict, Optional
 import uuid
 
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import pkcs12
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
@@ -25,6 +29,8 @@ AZURE_REDIRECT_URI = os.getenv(
 )
 # Certificate configuration
 AZURE_CERTIFICATE_THUMBPRINT = os.getenv("AZURE_CERTIFICATE_THUMBPRINT")
+AZURE_KEY_VAULT_NAME = os.getenv("AZURE_KEY_VAULT_NAME")
+AZURE_CERTIFICATE_NAME = os.getenv("AZURE_CERTIFICATE_NAME")
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-me-in-production")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRATION_HOURS = int(os.getenv("JWT_EXPIRATION_HOURS", "24"))
@@ -79,18 +85,30 @@ class AuthService:
     @staticmethod
     def _create_client_assertion() -> str:
         """Create a client assertion JWT for certificate authentication"""
-        if not AZURE_CERTIFICATE_THUMBPRINT:
+        if not all([AZURE_KEY_VAULT_NAME, AZURE_CERTIFICATE_NAME]):
             return None
 
-        # Path where App Service loads the certificate
-        pfx_path = f"/var/ssl/private/{AZURE_CERTIFICATE_THUMBPRINT}.p12"
-
         try:
-            # Load the certificate and private key
-            with open(pfx_path, "rb") as f:
-                private_key, cert, _ = pkcs12.load_key_and_certificates(
-                    f.read(), None
-                )
+            # Use managed identity to access Key Vault
+            credential = DefaultAzureCredential()
+
+            # Get the certificate from Key Vault as a secret (contains both cert and private key)
+            key_vault_url = f"https://{AZURE_KEY_VAULT_NAME}.vault.azure.net/"
+            secret_client = SecretClient(
+                vault_url=key_vault_url, credential=credential
+            )
+
+            # Certificate stored as secret with same name
+            certificate_secret = secret_client.get_secret(
+                AZURE_CERTIFICATE_NAME
+            )
+            cert_bytes = base64.b64decode(certificate_secret.value)
+
+            # Load the certificate and private key from the PFX/PKCS12 data
+            # Azure Key Vault certificates have no password
+            private_key, certificate, _ = pkcs12.load_key_and_certificates(
+                cert_bytes, None
+            )
 
             # Create the JWT claims
             now = int(time.time())
@@ -104,21 +122,29 @@ class AuthService:
                 "nbf": now,
             }
 
+            # Get the certificate thumbprint (x5t is base64url encoded SHA1 thumbprint)
+            import hashlib
+
+            cert_der = certificate.public_bytes(
+                encoding=serialization.Encoding.DER
+            )
+            sha1_hash = hashlib.sha1(cert_der).digest()
+            x5t = base64.urlsafe_b64encode(sha1_hash).decode().rstrip("=")
+
             # Create the JWT with RS256 algorithm and x5t header
-            headers = {"x5t": AZURE_CERTIFICATE_THUMBPRINT}
+            headers = {"x5t": x5t}
             client_assertion = jwt.encode(
                 claims, private_key, algorithm="RS256", headers=headers
             )
 
             return client_assertion
-        except FileNotFoundError:
-            # Certificate not loaded by App Service - fall back to secret
-            return None
         except Exception as e:
             # Log but don't fail - fall back to secret
             import logging
 
-            logging.warning(f"Failed to create client assertion: {e}")
+            logging.warning(
+                f"Failed to create client assertion from Key Vault: {e}"
+            )
             return None
 
     @staticmethod
