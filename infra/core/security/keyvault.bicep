@@ -42,7 +42,7 @@ var azureAppServicePrincipalId = 'abfa0a7c-a6b6-4736-8310-5855508787cd' // Globa
 var keyVaultSecretsUserRole = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
 
 resource appServiceRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableRbacAuthorization) {
-  name: guid(keyVault.id, azureAppServicePrincipalId, 'app-service-access')
+  name: guid(keyVault.id, azureAppServicePrincipalId, keyVaultSecretsUserRole)
   scope: keyVault
   properties: {
     roleDefinitionId: keyVaultSecretsUserRole

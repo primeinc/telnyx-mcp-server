@@ -9,7 +9,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
 var azureAppServicePrincipalId = 'abfa0a7c-a6b6-4736-8310-5855508787cd' // Global Microsoft Azure App Service principal
 var keyVaultSecretsUserRole = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
 
-// Use existing assignment if it exists, otherwise create new one
+// Use deterministic GUID with role definition ID
 resource appServiceRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(keyVault.id, azureAppServicePrincipalId, keyVaultSecretsUserRole)
   scope: keyVault
