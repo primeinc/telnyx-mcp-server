@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.36.1.42791",
-      "templateHash": "17295632742735871653"
+      "templateHash": "10913733076154738202"
     }
   },
   "parameters": {
@@ -658,6 +658,88 @@
         "rg"
       ]
     },
+    "webIdentity": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "web-identity",
+      "resourceGroup": "[if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[format('{0}{1}-identity', variables('abbrs').webSitesAppService, variables('workloadName'))]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.36.1.42791",
+              "templateHash": "9988669171779752910"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the managed identity"
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]",
+              "metadata": {
+                "description": "Location for the managed identity"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags for the managed identity"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-01-31",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]"
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('name'))]"
+            },
+            "principalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('name')), '2023-01-31').principalId]"
+            },
+            "clientId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('name')), '2023-01-31').clientId]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "rg"
+      ]
+    },
     "web": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2022-09-01",
@@ -681,11 +763,11 @@
           "appServicePlanId": {
             "value": "[reference('appServicePlan').outputs.id.value]"
           },
-          "enableBuiltInAuth": {
-            "value": false
+          "userAssignedIdentityId": {
+            "value": "[reference('webIdentity').outputs.id.value]"
           },
-          "authClientId": {
-            "value": ""
+          "userAssignedIdentityClientId": {
+            "value": "[reference('webIdentity').outputs.clientId.value]"
           },
           "appSettings": {
             "value": {
@@ -695,14 +777,15 @@
               "APPLICATION_INSIGHTS_KEY": "[reference('monitoring').outputs.applicationInsightsInstrumentationKey.value]",
               "AZURE_KEY_VAULT_ENDPOINT": "[if(parameters('useKeyVault'), reference('keyVault').outputs.uri.value, '')]",
               "USE_KEY_VAULT": "[if(parameters('useKeyVault'), 'true', 'false')]",
-              "AZURE_CLIENT_ID": "[if(not(empty(parameters('existingOauthAppClientId'))), parameters('existingOauthAppClientId'), '')]",
+              "AZURE_CLIENT_ID": "[parameters('existingOauthAppClientId')]",
               "AZURE_TENANT_ID": "[tenant().tenantId]",
+              "AZURE_REDIRECT_URI": "[format('https://{0}{1}-{2}-{3}-001.azurewebsites.net/auth/callback', variables('abbrs').webSitesAppService, variables('workloadName'), parameters('environment'), variables('locationShortName'))]",
               "JWT_SECRET_KEY": "[if(parameters('useKeyVault'), format('@Microsoft.KeyVault(VaultName={0};SecretName=jwt-secret-key)', reference('keyVault').outputs.name.value), parameters('jwtSecretKey'))]",
               "JWT_ALGORITHM": "HS256",
               "JWT_EXPIRATION_HOURS": "24",
               "TELNYX_API_KEY": "[if(parameters('useKeyVault'), format('@Microsoft.KeyVault(VaultName={0};SecretName=telnyx-api-key)', reference('keyVault').outputs.name.value), parameters('telnyxApiKey'))]",
               "ENVIRONMENT": "[parameters('environment')]",
-              "LOG_LEVEL": "[if(equals(parameters('environment'), 'prod'), 'WARNING', if(equals(parameters('environment'), 'staging'), 'INFO', 'DEBUG'))]",
+              "LOG_LEVEL": "[if(equals(parameters('environment'), 'prod'), 'WARNING', 'DEBUG')]",
               "ENABLE_PII_REDACTION": "[if(equals(parameters('environment'), 'prod'), 'true', 'false')]",
               "REDIS_URL": "[if(parameters('useRedis'), listOutputsWithSecureValues(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))), 'Microsoft.Resources/deployments', 'redis'), '2022-09-01').connectionString, '')]",
               "USE_REDIS": "[if(parameters('useRedis'), 'true', 'false')]",
@@ -712,7 +795,8 @@
               "PYTHON_ENABLE_GUNICORN_MULTIWORKERS": "true",
               "GUNICORN_CMD_ARGS": "[if(equals(parameters('environment'), 'prod'), '--log-level warning', if(equals(parameters('environment'), 'staging'), '--log-level info', '--log-level debug'))]",
               "WEBSITES_PORT": "8000",
-              "WEBSITE_RUN_FROM_PACKAGE": "0",
+              "WEBSITE_RUN_FROM_PACKAGE": "1",
+              "Oryx_EnablePythonNixAlias": "true",
               "WEBSITES_CONTAINER_START_TIME_LIMIT": "1800",
               "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "false",
               "WEBSITE_WEBDEPLOY_USE_SCM": "true"
@@ -726,7 +810,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.36.1.42791",
-              "templateHash": "5046951676463631781"
+              "templateHash": "1025324077532814951"
             }
           },
           "parameters": {
@@ -748,18 +832,16 @@
               "type": "secureObject",
               "defaultValue": {}
             },
-            "authClientId": {
+            "userAssignedIdentityId": {
               "type": "string",
-              "defaultValue": "",
               "metadata": {
-                "description": "The client ID of the Microsoft Entra application"
+                "description": "User-assigned managed identity resource ID"
               }
             },
-            "enableBuiltInAuth": {
-              "type": "bool",
-              "defaultValue": false,
+            "userAssignedIdentityClientId": {
+              "type": "string",
               "metadata": {
-                "description": "Enable Built-in Authentication"
+                "description": "User-assigned managed identity client ID for FIC"
               }
             }
           },
@@ -771,7 +853,10 @@
               "location": "[parameters('location')]",
               "tags": "[union(parameters('tags'), createObject('azd-service-name', 'web'))]",
               "identity": {
-                "type": "SystemAssigned"
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', parameters('userAssignedIdentityId'))]": {}
+                }
               },
               "properties": {
                 "serverFarmId": "[parameters('appServicePlanId')]",
@@ -780,10 +865,10 @@
                   "copy": [
                     {
                       "name": "appSettings",
-                      "count": "[length(items(parameters('appSettings')))]",
+                      "count": "[length(items(union(parameters('appSettings'), createObject('OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID', parameters('userAssignedIdentityClientId')))))]",
                       "input": {
-                        "name": "[items(parameters('appSettings'))[copyIndex('appSettings')].key]",
-                        "value": "[items(parameters('appSettings'))[copyIndex('appSettings')].value]"
+                        "name": "[items(union(parameters('appSettings'), createObject('OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID', parameters('userAssignedIdentityClientId'))))[copyIndex('appSettings')].key]",
+                        "value": "[items(union(parameters('appSettings'), createObject('OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID', parameters('userAssignedIdentityClientId'))))[copyIndex('appSettings')].value]"
                       }
                     }
                   ],
@@ -824,42 +909,6 @@
               "dependsOn": [
                 "[resourceId('Microsoft.Web/sites', parameters('name'))]"
               ]
-            },
-            {
-              "condition": "[parameters('enableBuiltInAuth')]",
-              "type": "Microsoft.Web/sites/config",
-              "apiVersion": "2022-03-01",
-              "name": "[format('{0}/{1}', parameters('name'), 'authsettingsV2')]",
-              "properties": {
-                "globalValidation": {
-                  "requireAuthentication": true,
-                  "unauthenticatedClientAction": "RedirectToLoginPage",
-                  "redirectToProvider": "azureactivedirectory"
-                },
-                "identityProviders": {
-                  "azureActiveDirectory": {
-                    "enabled": true,
-                    "registration": {
-                      "clientId": "[parameters('authClientId')]",
-                      "clientSecretSettingName": "OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID",
-                      "openIdIssuer": "[format('{0}{1}/v2.0', environment().authentication.loginEndpoint, tenant().tenantId)]"
-                    },
-                    "validation": {
-                      "defaultAuthorizationPolicy": {
-                        "allowedApplications": []
-                      }
-                    }
-                  }
-                },
-                "login": {
-                  "tokenStore": {
-                    "enabled": true
-                  }
-                }
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Web/sites', parameters('name'))]"
-              ]
             }
           ],
           "outputs": {
@@ -870,10 +919,6 @@
             "name": {
               "type": "string",
               "value": "[parameters('name')]"
-            },
-            "principalId": {
-              "type": "string",
-              "value": "[reference(resourceId('Microsoft.Web/sites', parameters('name')), '2022-03-01', 'full').identity.principalId]"
             }
           }
         }
@@ -883,7 +928,8 @@
         "keyVault",
         "monitoring",
         "redis",
-        "rg"
+        "rg",
+        "webIdentity"
       ]
     },
     "oauthAppFIC": {
@@ -908,7 +954,7 @@
             "value": "[format('https://{0}{1}-{2}-{3}-001.azurewebsites.net', variables('abbrs').webSitesAppService, variables('workloadName'), parameters('environment'), variables('locationShortName'))]"
           },
           "webAppIdentityId": {
-            "value": "[reference('web').outputs.principalId.value]"
+            "value": "[reference('webIdentity').outputs.principalId.value]"
           },
           "issuer": {
             "value": "[format('{0}{1}/v2.0', environment().authentication.loginEndpoint, tenant().tenantId)]"
@@ -1097,11 +1143,11 @@
       },
       "dependsOn": [
         "rg",
-        "web"
+        "webIdentity"
       ]
     },
     "webAuthUpdate": {
-      "condition": "[parameters('createOAuthApp')]",
+      "condition": "[or(parameters('createOAuthApp'), not(empty(parameters('existingOauthAppClientId'))))]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2022-09-01",
       "name": "web-auth-update",
@@ -1115,9 +1161,7 @@
           "appServiceName": {
             "value": "[reference('web').outputs.name.value]"
           },
-          "clientId": {
-            "value": "[reference('oauthAppFIC').outputs.clientAppId.value]"
-          },
+          "clientId": "[if(parameters('createOAuthApp'), createObject('value', reference('oauthAppFIC').outputs.clientAppId.value), createObject('value', parameters('existingOauthAppClientId')))]",
           "openIdIssuer": {
             "value": "[format('{0}{1}/v2.0', environment().authentication.loginEndpoint, tenant().tenantId)]"
           }
@@ -1129,7 +1173,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.36.1.42791",
-              "templateHash": "14899551039928590959"
+              "templateHash": "17711553302980181362"
             }
           },
           "parameters": {
@@ -1155,7 +1199,12 @@
                 "globalValidation": {
                   "requireAuthentication": true,
                   "unauthenticatedClientAction": "RedirectToLoginPage",
-                  "redirectToProvider": "azureactivedirectory"
+                  "redirectToProvider": "azureactivedirectory",
+                  "excludedPaths": [
+                    "/.well-known/oauth-authorization-server",
+                    "/.well-known/mcp-oauth-metadata",
+                    "/health"
+                  ]
                 },
                 "identityProviders": {
                   "azureActiveDirectory": {
@@ -1204,7 +1253,7 @@
             "value": "[reference('keyVault').outputs.name.value]"
           },
           "principalId": {
-            "value": "[reference('web').outputs.principalId.value]"
+            "value": "[reference('webIdentity').outputs.principalId.value]"
           }
         },
         "template": {
@@ -1251,7 +1300,7 @@
       "dependsOn": [
         "keyVault",
         "rg",
-        "web"
+        "webIdentity"
       ]
     },
     "appServicePlan": {

@@ -203,7 +203,7 @@ module web './app/web.bicep' = {
       PYTHON_ENABLE_GUNICORN_MULTIWORKERS: 'true'
       GUNICORN_CMD_ARGS: environment == 'prod' ? '--log-level warning' : environment == 'staging' ? '--log-level info' : '--log-level debug'
       WEBSITES_PORT: '8000'
-      WEBSITE_RUN_FROM_PACKAGE: '1'  // Run directly from ZIP package
+      WEBSITE_RUN_FROM_PACKAGE: '0'  // Normal deployment with extraction
       Oryx_EnablePythonNixAlias: 'true'  // Create python -> python3 symlink
       WEBSITES_CONTAINER_START_TIME_LIMIT: '1800'
       WEBSITES_ENABLE_APP_SERVICE_STORAGE: 'false'
