@@ -45,13 +45,7 @@ resource createCertificate 'Microsoft.Resources/deploymentScripts@2023-08-01' = 
       $ErrorActionPreference = 'Stop'
       $DeploymentScriptOutputs = @{}
 
-      # Try to get existing certificate with error handling
-      $existingCert = $null
-      try {
-        $existingCert = Get-AzKeyVaultCertificate -VaultName $vaultName -Name $certificateName -ErrorAction SilentlyContinue
-      } catch {
-        Write-Host "Certificate does not exist yet, will create new one"
-      }
+      $existingCert = Get-AzKeyVaultCertificate -VaultName $vaultName -Name $certificateName
       if ($existingCert -and $existingCert.Certificate.Subject -eq $subjectName) {
         Write-Host 'Certificate $certificateName in vault $vaultName is already present.'
 

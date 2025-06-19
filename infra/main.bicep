@@ -194,6 +194,7 @@ module webCert './core/security/web-certificate.bicep' = if (createOAuthApp && u
   }
   dependsOn: [
     certificate  // Ensure certificate is created first
+    keyVault    // Ensure Key Vault and its RBAC assignments are complete
   ]
 }
 
