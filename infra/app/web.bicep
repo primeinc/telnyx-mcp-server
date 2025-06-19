@@ -87,5 +87,4 @@ resource webLogs 'Microsoft.Web/sites/config@2022-03-01' = {
 
 output uri string = 'https://${web.properties.defaultHostName}'
 output name string = web.name
-// For user-assigned identity, we output the identity we're using
-output principalId string = userAssignedIdentityId
+// We don't output principalId here - the managed identity module already provides that
