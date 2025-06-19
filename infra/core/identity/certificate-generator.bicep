@@ -47,10 +47,17 @@ resource createCertificate 'Microsoft.Resources/deploymentScripts@2023-08-01' = 
 
       $existingCert = Get-AzKeyVaultCertificate -VaultName $vaultName -Name $certificateName
       if ($existingCert -and $existingCert.Certificate.Subject -eq $subjectName) {
-        Write-Host 'Certificate $certificateName in vault $vaultName is already present.'
+        Write-Host \"Certificate $certificateName in vault $vaultName is already present.\"
 
-        $certValue = (Get-AzKeyVaultSecret -VaultName $vaultName -Name $certificateName).SecretValue | ConvertFrom-SecureString -AsPlainText
-        $pfxCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @([Convert]::FromBase64String($certValue),"",[System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+        # Get the secret value
+        $certSecret = Get-AzKeyVaultSecret -VaultName $vaultName -Name $certificateName
+        $certValue = $certSecret.SecretValue | ConvertFrom-SecureString -AsPlainText
+
+        # Decode and load the certificate
+        $certBytes = [Convert]::FromBase64String($certValue)
+        $pfxCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList $certBytes, \"\", ([System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+
+        # Get the public key
         $publicKey = [System.Convert]::ToBase64String($pfxCert.GetRawCertData())
 
         $DeploymentScriptOutputs['certStart'] = $existingCert.notBefore
@@ -77,8 +84,16 @@ resource createCertificate 'Microsoft.Resources/deploymentScripts@2023-08-01' = 
         } while ($operation.Status -ne 'completed')
 
         $newCert = Get-AzKeyVaultCertificate -VaultName $vaultName -Name $certificateName
-        $certValue = (Get-AzKeyVaultSecret -VaultName $vaultName -Name $certificateName).SecretValue | ConvertFrom-SecureString -AsPlainText
-        $pfxCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @([Convert]::FromBase64String($certValue),"",[System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+
+        # Get the secret value
+        $certSecret = Get-AzKeyVaultSecret -VaultName $vaultName -Name $certificateName
+        $certValue = $certSecret.SecretValue | ConvertFrom-SecureString -AsPlainText
+
+        # Decode and load the certificate
+        $certBytes = [Convert]::FromBase64String($certValue)
+        $pfxCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList $certBytes, \"\", ([System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+
+        # Get the public key
         $publicKey = [System.Convert]::ToBase64String($pfxCert.GetRawCertData())
 
         $DeploymentScriptOutputs['certStart'] = $newCert.notBefore
