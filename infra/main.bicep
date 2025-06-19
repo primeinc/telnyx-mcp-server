@@ -181,6 +181,18 @@ module githubRBAC './core/identity/github-fic-rbac.bicep' = if (createGitHubFIC)
   }
 }
 
+// Grant App Service access to Key Vault for certificate operations
+module appServiceKeyVaultAccess './core/security/keyvault-app-service-access.bicep' = if (useKeyVault) {
+  name: 'app-service-keyvault-access'
+  scope: rg
+  params: {
+    keyVaultName: keyVault.outputs.name
+  }
+  dependsOn: [
+    keyVault
+  ]
+}
+
 // Web certificate for OAuth authentication - deployed at RG scope via module
 module webCert './core/security/web-certificate.bicep' = if (createOAuthApp && useKeyVault) {
   name: 'web-certificate'
@@ -194,7 +206,7 @@ module webCert './core/security/web-certificate.bicep' = if (createOAuthApp && u
   }
   dependsOn: [
     certificate  // Ensure certificate is created first
-    keyVault    // Ensure Key Vault and its RBAC assignments are complete
+    appServiceKeyVaultAccess  // Ensure App Service has access to Key Vault
   ]
 }
 
