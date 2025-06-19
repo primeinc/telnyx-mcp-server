@@ -717,7 +717,12 @@ async def oauth_metadata(request: Request):
         # Direct access
         base_url = str(request.base_url).rstrip("/")
 
-    return {
+    # Check if running with Built-in Auth enabled
+    builtin_auth_enabled = (
+        os.getenv("WEBSITE_AUTH_ENABLED", "false").lower() == "true"
+    )
+
+    metadata = {
         "issuer": base_url,
         "authorization_endpoint": f"{base_url}/authorize",
         "token_endpoint": f"{base_url}/token",
@@ -745,6 +750,22 @@ async def oauth_metadata(request: Request):
         "service_documentation": f"{base_url}/docs",
     }
 
+    # Add Built-in Auth information when enabled
+    if builtin_auth_enabled:
+        metadata["authorization_endpoint_alternatives"] = {
+            "builtin_auth": {
+                "endpoint": f"{base_url}/.auth/login/aad",
+                "description": "Azure App Service Built-in Authentication (Easy Auth)",
+                "type": "browser_based",
+            }
+        }
+        metadata["authentication_methods_supported"] = [
+            "oauth2_authorization_code",
+            "azure_builtin_auth",
+        ]
+
+    return metadata
+
 
 @app.get("/.well-known/mcp-oauth-metadata")
 async def mcp_oauth_metadata(request: Request):
@@ -762,7 +783,12 @@ async def mcp_oauth_metadata(request: Request):
         # Direct access
         base_url = str(request.base_url).rstrip("/")
 
-    return {
+    # Check if running with Built-in Auth enabled
+    builtin_auth_enabled = (
+        os.getenv("WEBSITE_AUTH_ENABLED", "false").lower() == "true"
+    )
+
+    metadata = {
         "issuer": base_url,
         "authorization_endpoint": f"{base_url}/authorize",
         "token_endpoint": f"{base_url}/token",
@@ -778,6 +804,17 @@ async def mcp_oauth_metadata(request: Request):
         ],
         "code_challenge_methods_supported": ["S256"],
     }
+
+    # Add Built-in Auth information when enabled
+    if builtin_auth_enabled:
+        metadata["azure_builtin_auth"] = {
+            "enabled": True,
+            "login_endpoint": f"{base_url}/.auth/login/aad",
+            "logout_endpoint": f"{base_url}/.auth/logout",
+            "description": "Azure App Service Built-in Authentication is enabled. Browser-based clients can use the login endpoint directly.",
+        }
+
+    return metadata
 
 
 @app.get("/.well-known/openid-configuration")
