@@ -16,10 +16,14 @@ param location string = resourceGroup().location
 @description('Current UTC time for force update')
 param utcValue string = utcNow()
 
+@description('Resource tags')
+param tags object = {}
+
 // Deployment script to create certificate in Key Vault
 resource createCertificate 'Microsoft.Resources/deploymentScripts@2020-10-01' = {
   name: 'createCertificate-${certificateName}'
   location: location
+  tags: tags
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {

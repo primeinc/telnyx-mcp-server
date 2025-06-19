@@ -5,8 +5,7 @@ param tags object = {}
 // App Service Plan ID
 param appServicePlanId string
 
-// Certificate name to load (optional)
-param certificateName string = ''
+// Certificate loading is handled automatically by WEBSITE_LOAD_CERTIFICATES in app settings
 
 // App Settings
 @secure()
@@ -33,7 +32,7 @@ resource web 'Microsoft.Web/sites@2022-03-01' = {
       minTlsVersion: '1.2'
       scmMinTlsVersion: '1.2'
       healthCheckPath: '/health'
-      loadCertificates: !empty(certificateName) ? [certificateName] : []
+      // loadCertificates is Windows-only, not needed for Linux App Service
       appSettings: [for setting in items(appSettings): {
         name: setting.key
         value: setting.value

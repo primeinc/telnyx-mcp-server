@@ -74,6 +74,9 @@ var abbrs = loadJsonContent('./abbreviations.json')
 // Tags based on Microsoft's recommendations
 var tags = {
   'azd-env-name': environmentName
+  env: environment
+  owner: 'will.peters'
+  costCenter: 'telnyx-mcp'
   WorkloadName: workloadName
   Environment: environment
   DataClassification: dataClassification
@@ -118,6 +121,7 @@ module certificate './core/identity/certificate-generator.bicep' = if (createOAu
     subjectName: 'CN=TelnyxMCPServer'
     managedIdentityId: managedIdentity.outputs.id
     location: location
+    tags: tags
   }
 }
 
@@ -177,19 +181,24 @@ module githubRBAC './core/identity/github-fic-rbac.bicep' = if (createGitHubFIC)
   }
 }
 
-// Web certificate for OAuth authentication
-resource webCertificate 'Microsoft.Web/certificates@2022-03-01' = if (createOAuthApp && useKeyVault) {
-  name: 'oauth-app-cert'
-  location: location
+// Web certificate for OAuth authentication - deployed at RG scope via module
+module webCert './core/security/web-certificate.bicep' = if (createOAuthApp && useKeyVault) {
+  name: 'web-certificate'
   scope: rg
-  properties: {
+  params: {
+    certificateName: 'oauth-app-cert'
+    location: location
     keyVaultId: keyVault.outputs.id
     keyVaultSecretName: 'oauth-app-cert'
+    tags: tags
   }
   dependsOn: [
     certificate  // Ensure certificate is created first
   ]
 }
+
+// Runtime thumbprint for app settings
+var certThumbprint = createOAuthApp && useKeyVault ? webCert.outputs.thumbprint : ''
 
 // The application frontend
 module web './app/web.bicep' = {
@@ -200,7 +209,6 @@ module web './app/web.bicep' = {
     location: location
     tags: tags
     appServicePlanId: appServicePlan.outputs.id
-    certificateName: createOAuthApp && useKeyVault ? webCertificate.name : ''
     appSettings: {
       // Application Insights
       APPLICATIONINSIGHTS_CONNECTION_STRING: monitoring.outputs.applicationInsightsConnectionString
@@ -216,10 +224,10 @@ module web './app/web.bicep' = {
       AZURE_CLIENT_ID: createOAuthApp ? oauthApp.outputs.appId : existingOauthAppClientId
       AZURE_TENANT_ID: tenant().tenantId
       AZURE_REDIRECT_URI: currentEnvRedirectUri
-      AZURE_CERTIFICATE_THUMBPRINT: createOAuthApp && useKeyVault ? webCertificate.properties.thumbprint : ''
+      AZURE_CERTIFICATE_THUMBPRINT: certThumbprint
 
       // Tell App Service to load the certificate
-      WEBSITE_LOAD_CERTIFICATES: createOAuthApp && useKeyVault ? webCertificate.properties.thumbprint : ''
+      WEBSITE_LOAD_CERTIFICATES: certThumbprint
 
       // JWT Configuration
       JWT_SECRET_KEY: useKeyVault ? '@Microsoft.KeyVault(VaultName=${keyVault.outputs.name};SecretName=jwt-secret-key)' : jwtSecretKey
