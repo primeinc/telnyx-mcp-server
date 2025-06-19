@@ -53,9 +53,10 @@ resource createCertificate 'Microsoft.Resources/deploymentScripts@2023-08-01' = 
         $certSecret = Get-AzKeyVaultSecret -VaultName $vaultName -Name $certificateName
         $certValue = $certSecret.SecretValue | ConvertFrom-SecureString -AsPlainText
 
-        # Decode and load the certificate
+        # Decode and load the certificate - Key Vault certs have no password
         $certBytes = [Convert]::FromBase64String($certValue)
-        $pfxCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList $certBytes, \"\", ([System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+        # Use different constructor that doesn't require password for Linux compatibility
+        $pfxCert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certBytes)
 
         # Get the public key
         $publicKey = [System.Convert]::ToBase64String($pfxCert.GetRawCertData())
@@ -89,9 +90,10 @@ resource createCertificate 'Microsoft.Resources/deploymentScripts@2023-08-01' = 
         $certSecret = Get-AzKeyVaultSecret -VaultName $vaultName -Name $certificateName
         $certValue = $certSecret.SecretValue | ConvertFrom-SecureString -AsPlainText
 
-        # Decode and load the certificate
+        # Decode and load the certificate - Key Vault certs have no password
         $certBytes = [Convert]::FromBase64String($certValue)
-        $pfxCert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList $certBytes, \"\", ([System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+        # Use different constructor that doesn't require password for Linux compatibility
+        $pfxCert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certBytes)
 
         # Get the public key
         $publicKey = [System.Convert]::ToBase64String($pfxCert.GetRawCertData())
