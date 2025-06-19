@@ -24,7 +24,10 @@ from sse_starlette.sse import EventSourceResponse
 from ..mcp import mcp
 
 # Import authentication
-from .auth import AuthService, get_current_user
+from .auth import (
+    AuthService,
+    get_current_user,
+)
 from .auth_store import auth_store
 from .schema_fixer import fix_tool_schema, validate_tool_arguments
 
