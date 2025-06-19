@@ -175,7 +175,7 @@ module web './app/web.bicep' = {
 
       // Environment and Logging
       ENVIRONMENT: environment
-      LOG_LEVEL: environment == 'prod' ? 'WARNING' : environment == 'staging' ? 'INFO' : 'DEBUG'
+      LOG_LEVEL: environment == 'prod' ? 'WARNING' : 'DEBUG'
       ENABLE_PII_REDACTION: environment == 'prod' ? 'true' : 'false'
 
       // Redis Configuration
