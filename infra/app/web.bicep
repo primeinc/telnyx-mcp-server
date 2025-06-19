@@ -14,13 +14,7 @@ param appSettings object = {}
 // Application Insights connection string is passed via appSettings from main.bicep
 // No need to reference the resource directly
 
-// Authentication parameters for Built-in Auth
-@description('The client ID of the Microsoft Entra application')
-param authClientId string = ''
-
-@description('Enable Built-in Authentication')
-param enableBuiltInAuth bool = false
-
+// User-assigned managed identity parameters
 @description('User-assigned managed identity resource ID')
 param userAssignedIdentityId string
 
@@ -54,10 +48,10 @@ resource web 'Microsoft.Web/sites@2022-03-01' = {
       appSettings: concat([for setting in items(appSettings): {
         name: setting.key
         value: setting.value
-      }], enableBuiltInAuth ? [{
+      }], [{
         name: 'OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID'
         value: userAssignedIdentityClientId
-      }] : [])
+      }])
     }
   }
 }

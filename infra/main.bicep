@@ -156,8 +156,6 @@ module web './app/web.bicep' = {
     location: location
     tags: tags
     appServicePlanId: appServicePlan.outputs.id
-    enableBuiltInAuth: !empty(existingOauthAppClientId)  // Only enable if we have an OAuth app
-    authClientId: existingOauthAppClientId
     userAssignedIdentityId: webIdentity.outputs.id
     userAssignedIdentityClientId: webIdentity.outputs.clientId
     appSettings: {
@@ -228,15 +226,17 @@ module oauthAppFIC './core/identity/app-registration-fic.bicep' = if (createOAut
   }
 }
 
-// Update web app with Built-in Auth configuration after OAuth app is created
-module webAuthUpdate './core/identity/web-auth-update.bicep' = if (createOAuthApp) {
+// Update web app with Built-in Auth configuration
+// This runs either after creating a new OAuth app OR when using an existing one
+module webAuthUpdate './core/identity/web-auth-update.bicep' = if (createOAuthApp || !empty(existingOauthAppClientId)) {
   name: 'web-auth-update'
   scope: rg
   params: {
     appServiceName: web.outputs.name
-    clientId: oauthAppFIC.outputs.clientAppId
+    clientId: createOAuthApp ? oauthAppFIC.outputs.clientAppId : existingOauthAppClientId
     openIdIssuer: '${az.environment().authentication.loginEndpoint}${tenant().tenantId}/v2.0'
   }
+  dependsOn: createOAuthApp ? [oauthAppFIC] : []
 }
 
 
