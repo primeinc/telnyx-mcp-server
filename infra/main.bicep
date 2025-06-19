@@ -197,8 +197,22 @@ module appServiceKeyVaultAccess './core/security/keyvault-app-service-access.bic
   ]
 }
 
+// Check if App Service has access to Key Vault
+module checkAppServiceAccess './core/identity/check-app-service-access.bicep' = if (useKeyVault) {
+  name: 'check-app-service-access'
+  scope: rg
+  params: {
+    keyVaultName: keyVault.outputs.name
+    location: location
+    tags: tags
+  }
+  dependsOn: [
+    appServiceKeyVaultAccess  // Try to create access first
+  ]
+}
+
 // Add a deployment script to ensure role propagation
-module roleWait './core/identity/wait-script.bicep' = if (useKeyVault) {
+module roleWait './core/identity/wait-script.bicep' = if (useKeyVault && checkAppServiceAccess.outputs.hasAccess) {
   name: 'role-propagation-wait'
   scope: rg
   params: {
@@ -207,12 +221,13 @@ module roleWait './core/identity/wait-script.bicep' = if (useKeyVault) {
   }
   dependsOn: [
     managedIdentity  // Wait for managed identity and its role assignments
-    appServiceKeyVaultAccess  // Wait for app service role assignment
+    checkAppServiceAccess  // Wait for access check
   ]
 }
 
 // Web certificate for OAuth authentication - deployed at RG scope via module
-module webCert './core/security/web-certificate.bicep' = if (createOAuthApp && useKeyVault) {
+// Only create if App Service has access to Key Vault
+module webCert './core/security/web-certificate.bicep' = if (createOAuthApp && useKeyVault && checkAppServiceAccess.outputs.hasAccess) {
   name: 'web-certificate'
   scope: rg
   params: {
@@ -228,8 +243,8 @@ module webCert './core/security/web-certificate.bicep' = if (createOAuthApp && u
   ]
 }
 
-// Runtime thumbprint for app settings
-var certThumbprint = createOAuthApp && useKeyVault ? webCert.outputs.thumbprint : ''
+// Runtime thumbprint for app settings - use certificate thumbprint if available
+var certThumbprint = (createOAuthApp && useKeyVault && checkAppServiceAccess.outputs.hasAccess) ? webCert.outputs.thumbprint : (createOAuthApp && useKeyVault) ? certificate.outputs.certThumbprint : ''
 
 // The application frontend
 module web './app/web.bicep' = {
