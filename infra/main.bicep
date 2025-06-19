@@ -122,7 +122,12 @@ module certificate './core/identity/certificate-generator.bicep' = if (createOAu
     managedIdentityId: managedIdentity.outputs.id
     location: location
     tags: tags
+    utcValue: utcNow()  // Force fresh deployment
   }
+  dependsOn: [
+    managedIdentity  // Ensure managed identity and its Key Vault access are created first
+    keyVault  // Ensure Key Vault exists
+  ]
 }
 
 // OAuth app configuration

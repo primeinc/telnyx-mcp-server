@@ -22,29 +22,27 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: keyVaultName
 }
 
-// Grant the managed identity access to Key Vault certificates
-resource keyVaultAccess 'Microsoft.KeyVault/vaults/accessPolicies@2023-07-01' = {
-  parent: keyVault
-  name: 'add'
+// Grant the managed identity RBAC roles for Key Vault
+var keyVaultSecretsUserRole = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
+var keyVaultCertificatesOfficerRole = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a4417e6f-fecd-4de8-b567-7b0420556985')
+
+resource secretsRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.id, managedIdentity.id, keyVaultSecretsUserRole)
+  scope: keyVault
   properties: {
-    accessPolicies: [
-      {
-        objectId: managedIdentity.properties.principalId
-        tenantId: tenant().tenantId
-        permissions: {
-          certificates: [
-            'get'
-            'list'
-            'create'
-            'update'
-          ]
-          secrets: [
-            'get'
-            'list'
-          ]
-        }
-      }
-    ]
+    roleDefinitionId: keyVaultSecretsUserRole
+    principalId: managedIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource certificatesRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.id, managedIdentity.id, keyVaultCertificatesOfficerRole)
+  scope: keyVault
+  properties: {
+    roleDefinitionId: keyVaultCertificatesOfficerRole
+    principalId: managedIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
   }
 }
 

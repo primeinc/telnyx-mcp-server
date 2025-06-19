@@ -20,7 +20,7 @@ param utcValue string = utcNow()
 param tags object = {}
 
 // Deployment script to create certificate in Key Vault
-resource createCertificate 'Microsoft.Resources/deploymentScripts@2020-10-01' = {
+resource createCertificate 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
   name: 'createCertificate-${certificateName}'
   location: location
   tags: tags
@@ -45,7 +45,17 @@ resource createCertificate 'Microsoft.Resources/deploymentScripts@2020-10-01' = 
       $ErrorActionPreference = 'Stop'
       $DeploymentScriptOutputs = @{}
 
-      $existingCert = Get-AzKeyVaultCertificate -VaultName $vaultName -Name $certificateName
+      # Wait for permissions to propagate
+      Write-Host "Waiting for Key Vault permissions to propagate..."
+      Start-Sleep -Seconds 30
+
+      # Try to get existing certificate with error handling
+      $existingCert = $null
+      try {
+        $existingCert = Get-AzKeyVaultCertificate -VaultName $vaultName -Name $certificateName -ErrorAction SilentlyContinue
+      } catch {
+        Write-Host "Certificate does not exist yet, will create new one"
+      }
       if ($existingCert -and $existingCert.Certificate.Subject -eq $subjectName) {
         Write-Host 'Certificate $certificateName in vault $vaultName is already present.'
 
