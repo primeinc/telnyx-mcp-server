@@ -26,8 +26,9 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
 var keyVaultSecretsUserRole = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
 var keyVaultCertificatesOfficerRole = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a4417e6f-fecd-4de8-b567-7b0420556985')
 
+// Use the principalId in the GUID to ensure uniqueness
 resource secretsRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVault.id, managedIdentity.id, keyVaultSecretsUserRole)
+  name: guid(keyVault.id, managedIdentity.properties.principalId, keyVaultSecretsUserRole)
   scope: keyVault
   properties: {
     roleDefinitionId: keyVaultSecretsUserRole
@@ -37,7 +38,7 @@ resource secretsRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-
 }
 
 resource certificatesRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVault.id, managedIdentity.id, keyVaultCertificatesOfficerRole)
+  name: guid(keyVault.id, managedIdentity.properties.principalId, keyVaultCertificatesOfficerRole)
   scope: keyVault
   properties: {
     roleDefinitionId: keyVaultCertificatesOfficerRole

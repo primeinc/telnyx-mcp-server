@@ -123,6 +123,9 @@ module certificate './core/identity/certificate-generator.bicep' = if (createOAu
     location: location
     tags: tags
   }
+  dependsOn: [
+    roleWait  // Ensure role assignments have propagated
+  ]
 }
 
 // OAuth app configuration
@@ -203,7 +206,8 @@ module roleWait './core/identity/wait-script.bicep' = if (useKeyVault) {
     tags: tags
   }
   dependsOn: [
-    appServiceKeyVaultAccess
+    managedIdentity  // Wait for managed identity and its role assignments
+    appServiceKeyVaultAccess  // Wait for app service role assignment
   ]
 }
 
