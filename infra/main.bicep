@@ -28,6 +28,9 @@ param gitHubRepo string = ''
 @description('Create GitHub Actions FIC')
 param createGitHubFIC bool = !empty(gitHubOwner) && !empty(gitHubRepo)
 
+@description('Existing OAuth App Client ID (used when createOAuthApp is false)')
+param existingOauthAppClientId string = ''
+
 @secure()
 @description('JWT Secret Key for token signing')
 param jwtSecretKey string = ''
@@ -195,7 +198,7 @@ module web './app/web.bicep' = {
       USE_KEY_VAULT: useKeyVault ? 'true' : 'false'
 
       // OAuth Configuration
-      AZURE_CLIENT_ID: createOAuthApp ? oauthApp.outputs.appId : ''
+      AZURE_CLIENT_ID: createOAuthApp ? oauthApp.outputs.appId : existingOauthAppClientId
       AZURE_TENANT_ID: tenant().tenantId
       AZURE_REDIRECT_URI: currentEnvRedirectUri
       AZURE_CERTIFICATE_NAME: createOAuthApp && useKeyVault ? 'oauth-app-cert' : ''
