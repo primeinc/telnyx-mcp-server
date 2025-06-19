@@ -144,8 +144,8 @@ module web './app/web.bicep' = {
     location: location
     tags: tags
     appServicePlanId: appServicePlan.outputs.id
-    enableBuiltInAuth: false  // Will be enabled in a separate step after OAuth app is created
-    authClientId: ''
+    enableBuiltInAuth: !empty(existingOauthAppClientId)  // Only enable if we have an OAuth app
+    authClientId: existingOauthAppClientId
     appSettings: {
       // Application Insights
       APPLICATIONINSIGHTS_CONNECTION_STRING: monitoring.outputs.applicationInsightsConnectionString
@@ -157,9 +157,12 @@ module web './app/web.bicep' = {
       AZURE_KEY_VAULT_ENDPOINT: useKeyVault ? keyVault.outputs.uri : ''
       USE_KEY_VAULT: useKeyVault ? 'true' : 'false'
 
-      // OAuth Configuration (Built-in Auth handles this)
-      AZURE_CLIENT_ID: !empty(existingOauthAppClientId) ? existingOauthAppClientId : ''
+      // OAuth Configuration
+      // Note: With Built-in Auth and FIC, the App Service doesn't need client secrets
+      AZURE_CLIENT_ID: existingOauthAppClientId  // This must be provided or OAuth app created separately
       AZURE_TENANT_ID: tenant().tenantId
+      AZURE_REDIRECT_URI: 'https://${abbrs.webSitesAppService}${workloadName}-${environment}-${locationShortName}-001.azurewebsites.net/auth/callback'
+      // AZURE_CLIENT_SECRET is intentionally not set - we use managed identity with FIC
 
       // JWT Configuration
       JWT_SECRET_KEY: useKeyVault ? '@Microsoft.KeyVault(VaultName=${keyVault.outputs.name};SecretName=jwt-secret-key)' : jwtSecretKey
@@ -220,6 +223,7 @@ module webAuthUpdate './core/identity/web-auth-update.bicep' = if (createOAuthAp
     openIdIssuer: '${az.environment().authentication.loginEndpoint}${tenant().tenantId}/v2.0'
   }
 }
+
 
 // Grant web app access to Key Vault (conditional)
 module webKeyVaultAccess './core/security/keyvault-access.bicep' = if (useKeyVault) {
