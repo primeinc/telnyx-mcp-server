@@ -45,10 +45,6 @@ resource createCertificate 'Microsoft.Resources/deploymentScripts@2023-08-01' = 
       $ErrorActionPreference = 'Stop'
       $DeploymentScriptOutputs = @{}
 
-      # Wait for permissions to propagate
-      Write-Host "Waiting for Key Vault permissions to propagate..."
-      Start-Sleep -Seconds 30
-
       # Try to get existing certificate with error handling
       $existingCert = $null
       try {
