@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import secrets
+import sys
 import time
 from typing import Any, Dict, List, Optional, Union
 import urllib.parse
@@ -403,9 +404,26 @@ def get_base_url_from_request(request: Request) -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    logger.info("Starting Telnyx Remote MCP Server")
+    logger.info(
+        f"Starting Telnyx Remote MCP Server v{__version__} "
+        f"(env={os.getenv('ENVIRONMENT', 'development')}, "
+        f"log_level={log_level}, pii_redaction={enable_pii_redaction})"
+    )
+    logger.info(f"Python version: {sys.version}")
+
+    # Log configuration details
+    logger.info(
+        f"Server configuration: allowed_origins={allowed_origins}, "
+        f"auth_enabled={AZURE_CLIENT_ID is not None}, "
+        f"redis_enabled={os.getenv('USE_REDIS', 'false').lower() == 'true'}, "
+        f"app_insights={application_insights_key is not None}"
+    )
+
     await telnyx_mcp_server.initialize_tools()
+    logger.info(f"Initialized {len(telnyx_mcp_server.tools)} tools")
+
     yield
+
     logger.info("Shutting down Telnyx Remote MCP Server")
 
 
@@ -479,14 +497,8 @@ async def log_cors_violations(request: Request, call_next):
 
     if origin and origin not in allowed_origins and "*" not in allowed_origins:
         logger.warning(
-            "CORS violation detected",
-            extra={
-                "origin": origin,
-                "allowed_origins": allowed_origins,
-                "url": str(request.url),
-                "method": request.method,
-                "user_agent": request.headers.get("user-agent", "unknown"),
-            },
+            f"CORS violation detected: origin={origin}, "
+            f"url={request.url}, method={request.method}"
         )
 
     response = await call_next(request)
@@ -506,16 +518,9 @@ async def log_requests(request: Request, call_next):
         set_trace_id(trace_id)
 
     # Log request details (PII will be redacted by processor)
-    logger.info(
-        "HTTP request started",
-        extra={
-            "method": request.method,
-            "path": request.url.path,
-            "query_params": dict(request.query_params),
-            "headers": dict(request.headers),
-            "client_ip": request.client.host if request.client else "unknown",
-            "user_agent": request.headers.get("user-agent", "unknown"),
-        },
+    logger.debug(
+        f"HTTP {request.method} {request.url.path} from "
+        f"{request.client.host if request.client else 'unknown'}"
     )
 
     # Process request
@@ -523,15 +528,9 @@ async def log_requests(request: Request, call_next):
 
     # Log response details
     process_time = time.time() - start_time
-    logger.info(
-        "HTTP request completed",
-        extra={
-            "method": request.method,
-            "path": request.url.path,
-            "status_code": response.status_code,
-            "process_time": process_time,
-            "response_size": response.headers.get("content-length", "unknown"),
-        },
+    logger.debug(
+        f"HTTP {request.method} {request.url.path} completed with "
+        f"status {response.status_code} in {process_time:.3f}s"
     )
 
     return response
@@ -595,6 +594,7 @@ async def root_post(
 @app.get("/health")
 async def health_check():
     """Health check endpoint with readiness probe functionality."""
+    logger.debug("Health check requested")
     health_data = {
         "status": "healthy",
         "service": "telnyx-mcp-server",

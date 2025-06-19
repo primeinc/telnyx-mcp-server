@@ -298,11 +298,14 @@ def configure_structlog(
     if enable_pii_redaction:
         processors.append(PIIRedactorProcessor())
 
-    # Add JSON renderer for production
+    # Add JSON renderer for production (unless in Azure App Service)
     environment = os.getenv("ENVIRONMENT", "development")
-    if environment == "production":
+    is_azure_app_service = os.getenv("WEBSITE_INSTANCE_ID") is not None
+
+    if environment == "production" and not is_azure_app_service:
         processors.append(JSONRenderer())
     else:
+        # Use console renderer for development and Azure App Service
         processors.append(structlog.dev.ConsoleRenderer())
 
     # Configure structlog
@@ -319,7 +322,14 @@ def configure_structlog(
     logging.basicConfig(
         level=getattr(logging, log_level.upper(), logging.INFO),
         format="%(message)s",
+        force=True,  # Force reconfiguration
     )
+
+    # Ensure logs are flushed immediately in Azure
+    if os.getenv("WEBSITE_INSTANCE_ID"):
+        # In Azure App Service, ensure immediate flush
+        for handler in logging.root.handlers:
+            handler.flush()
 
     # Configure Application Insights if key provided
     if application_insights_key:
