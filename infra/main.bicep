@@ -182,6 +182,7 @@ module githubRBAC './core/identity/github-fic-rbac.bicep' = if (createGitHubFIC)
 }
 
 // Grant App Service access to Key Vault for certificate operations
+// This MUST complete before any web certificates can be created
 module appServiceKeyVaultAccess './core/security/keyvault-app-service-access.bicep' = if (useKeyVault) {
   name: 'app-service-keyvault-access'
   scope: rg
@@ -190,6 +191,19 @@ module appServiceKeyVaultAccess './core/security/keyvault-app-service-access.bic
   }
   dependsOn: [
     keyVault
+  ]
+}
+
+// Add a deployment script to ensure role propagation
+module roleWait './core/identity/wait-script.bicep' = if (useKeyVault) {
+  name: 'role-propagation-wait'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+  }
+  dependsOn: [
+    appServiceKeyVaultAccess
   ]
 }
 
@@ -206,7 +220,7 @@ module webCert './core/security/web-certificate.bicep' = if (createOAuthApp && u
   }
   dependsOn: [
     certificate  // Ensure certificate is created first
-    appServiceKeyVaultAccess  // Ensure App Service has access to Key Vault
+    roleWait  // Ensure role assignments have propagated
   ]
 }
 
