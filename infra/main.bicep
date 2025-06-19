@@ -198,9 +198,6 @@ module web './app/web.bicep' = {
 
 // Create OAuth app registration with Federated Identity Credential for Built-in Auth
 // This replaces the old certificate-based authentication
-var loginEndpoint = environment().authentication.loginEndpoint
-var tenantId = tenant().tenantId
-var issuer = '${loginEndpoint}${tenantId}/v2.0'
 module oauthAppFIC './core/identity/app-registration-fic.bicep' = if (createOAuthApp) {
   name: 'oauth-app-fic'
   scope: rg
@@ -209,11 +206,8 @@ module oauthAppFIC './core/identity/app-registration-fic.bicep' = if (createOAut
     clientAppDisplayName: oauthAppDisplayName
     webAppEndpoint: 'https://${abbrs.webSitesAppService}${workloadName}-${environment}-${locationShortName}-001.azurewebsites.net'
     webAppIdentityId: web.outputs.principalId  // App Service managed identity
-    issuer: issuer
+    issuer: '${az.environment().authentication.loginEndpoint}${tenant().tenantId}/v2.0'
   }
-  dependsOn: [
-    web
-  ]
 }
 
 // Update web app with Built-in Auth configuration after OAuth app is created
@@ -223,11 +217,8 @@ module webAuthUpdate './core/identity/web-auth-update.bicep' = if (createOAuthAp
   params: {
     appServiceName: web.outputs.name
     clientId: oauthAppFIC.outputs.clientAppId
-    openIdIssuer: issuer
+    openIdIssuer: '${az.environment().authentication.loginEndpoint}${tenant().tenantId}/v2.0'
   }
-  dependsOn: [
-    oauthAppFIC
-  ]
 }
 
 // Grant web app access to Key Vault (conditional)

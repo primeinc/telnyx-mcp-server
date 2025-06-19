@@ -1,0 +1,1946 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "languageVersion": "2.1-experimental",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.36.1.42791",
+      "templateHash": "11411888278366768625"
+    }
+  },
+  "parameters": {
+    "environmentName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "metadata": {
+        "description": "Name of the environment that can be used as part of naming resource convention"
+      }
+    },
+    "location": {
+      "type": "string",
+      "minLength": 1,
+      "metadata": {
+        "description": "Primary location for all resources"
+      }
+    },
+    "createOAuthApp": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Create OAuth app registration automatically"
+      }
+    },
+    "oauthAppDisplayName": {
+      "type": "string",
+      "defaultValue": "Telnyx MCP Server",
+      "metadata": {
+        "description": "OAuth app display name"
+      }
+    },
+    "gitHubOwner": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "GitHub organization or username for FIC"
+      }
+    },
+    "gitHubRepo": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "GitHub repository name for FIC"
+      }
+    },
+    "createGitHubFIC": {
+      "type": "bool",
+      "defaultValue": "[and(not(empty(parameters('gitHubOwner'))), not(empty(parameters('gitHubRepo'))))]",
+      "metadata": {
+        "description": "Create GitHub Actions FIC"
+      }
+    },
+    "existingOauthAppClientId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Existing OAuth App Client ID (used when createOAuthApp is false)"
+      }
+    },
+    "jwtSecretKey": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "JWT Secret Key for token signing"
+      }
+    },
+    "telnyxApiKey": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Telnyx API Key"
+      }
+    },
+    "environment": {
+      "type": "string",
+      "defaultValue": "prod",
+      "allowedValues": [
+        "dev",
+        "staging",
+        "prod"
+      ],
+      "metadata": {
+        "description": "Application Environment"
+      }
+    },
+    "useKeyVault": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Use Azure Key Vault for secret management"
+      }
+    },
+    "useRedis": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy Redis cache for session storage"
+      }
+    },
+    "dataClassification": {
+      "type": "string",
+      "defaultValue": "General",
+      "allowedValues": [
+        "Non-business",
+        "Public",
+        "General",
+        "Confidential",
+        "Highly confidential"
+      ],
+      "metadata": {
+        "description": "Data classification for the workload"
+      }
+    },
+    "businessCriticality": {
+      "type": "string",
+      "defaultValue": "High",
+      "allowedValues": [
+        "Low",
+        "Medium",
+        "High",
+        "Business unit-critical",
+        "Mission-critical"
+      ],
+      "metadata": {
+        "description": "Business criticality of the workload"
+      }
+    },
+    "businessUnit": {
+      "type": "string",
+      "defaultValue": "Engineering",
+      "metadata": {
+        "description": "Business unit that owns the workload"
+      }
+    },
+    "opsTeam": {
+      "type": "string",
+      "defaultValue": "Cloud operations",
+      "metadata": {
+        "description": "Team responsible for day-to-day operations"
+      }
+    },
+    "resourceGroupName": {
+      "type": "string",
+      "defaultValue": ""
+    }
+  },
+  "variables": {
+    "$fxv#0": {
+      "analysisServicesServers": "as",
+      "apiManagementService": "apim-",
+      "appConfigurationStores": "appcs-",
+      "appManagedEnvironments": "cae-",
+      "appContainerApps": "ca-",
+      "authorizationPolicyDefinitions": "policy-",
+      "automationAutomationAccounts": "aa-",
+      "blueprintBlueprints": "bp-",
+      "blueprintBlueprintsArtifacts": "bpa-",
+      "cacheRedis": "redis-",
+      "cdnProfiles": "cdnp-",
+      "cdnProfilesEndpoints": "cdne-",
+      "cognitiveServicesAccounts": "cog-",
+      "cognitiveServicesFormRecognizer": "cog-fr-",
+      "cognitiveServicesTextAnalytics": "cog-ta-",
+      "cognitiveServicesSpeech": "cog-sp-",
+      "computeAvailabilitySets": "avail-",
+      "computeCloudServices": "cld-",
+      "computeDiskEncryptionSets": "des",
+      "computeDisks": "disk",
+      "computeDisksOs": "osdisk",
+      "computeGalleries": "gal",
+      "computeSnapshots": "snap-",
+      "computeVirtualMachines": "vm",
+      "computeVirtualMachineScaleSets": "vmss-",
+      "containerInstanceContainerGroups": "ci",
+      "containerRegistryRegistries": "cr",
+      "containerServiceManagedClusters": "aks-",
+      "databricksWorkspaces": "dbw-",
+      "dataFactoryFactories": "adf-",
+      "dataLakeAnalyticsAccounts": "dla",
+      "dataLakeStoreAccounts": "dls",
+      "dataMigrationServices": "dms-",
+      "dBforMySQLServers": "mysql-",
+      "dBforPostgreSQLServers": "psql-",
+      "devicesIotHubs": "iot-",
+      "devicesProvisioningServices": "provs-",
+      "devicesProvisioningServicesCertificates": "pcert-",
+      "documentDBDatabaseAccounts": "cosmos-",
+      "eventGridDomains": "evgd-",
+      "eventGridDomainsTopics": "evgt-",
+      "eventGridEventSubscriptions": "evgs-",
+      "eventHubNamespaces": "evhns-",
+      "eventHubNamespacesEventHubs": "evh-",
+      "hdInsightClustersHadoop": "hadoop-",
+      "hdInsightClustersHbase": "hbase-",
+      "hdInsightClustersKafka": "kafka-",
+      "hdInsightClustersMl": "mls-",
+      "hdInsightClustersSpark": "spark-",
+      "hdInsightClustersStorm": "storm-",
+      "hybridComputeMachines": "arcs-",
+      "insightsActionGroups": "ag-",
+      "insightsComponents": "appi-",
+      "keyVaultVaults": "kv-",
+      "kubernetesConnectedClusters": "arck",
+      "kustoClusters": "dec",
+      "kustoClustersDatabases": "dedb",
+      "loadTesting": "lt-",
+      "logicIntegrationAccounts": "ia-",
+      "logicWorkflows": "logic-",
+      "machineLearningServicesWorkspaces": "mlw-",
+      "managedIdentityUserAssignedIdentities": "id-",
+      "managementManagementGroups": "mg-",
+      "migrateAssessmentProjects": "migr-",
+      "networkApplicationGateways": "agw-",
+      "networkApplicationSecurityGroups": "asg-",
+      "networkAzureFirewalls": "afw-",
+      "networkBastionHosts": "bas-",
+      "networkConnections": "con-",
+      "networkDnsZones": "dnsz-",
+      "networkExpressRouteCircuits": "erc-",
+      "networkFirewallPolicies": "afwp-",
+      "networkFirewallPoliciesWebApplication": "waf",
+      "networkFirewallPoliciesRuleGroups": "wafrg",
+      "networkFrontDoors": "fd-",
+      "networkFrontdoorWebApplicationFirewallPolicies": "fdfp-",
+      "networkLoadBalancersExternal": "lbe-",
+      "networkLoadBalancersInternal": "lbi-",
+      "networkLoadBalancersInboundNatRules": "rule-",
+      "networkLocalNetworkGateways": "lgw-",
+      "networkNatGateways": "ng-",
+      "networkNetworkInterfaces": "nic-",
+      "networkNetworkSecurityGroups": "nsg-",
+      "networkNetworkSecurityGroupsSecurityRules": "nsgsr-",
+      "networkNetworkWatchers": "nw-",
+      "networkPrivateDnsZones": "pdnsz-",
+      "networkPrivateLinkServices": "pl-",
+      "networkPublicIPAddresses": "pip-",
+      "networkPublicIPPrefixes": "ippre-",
+      "networkRouteFilters": "rf-",
+      "networkRouteTables": "rt-",
+      "networkRouteTablesRoutes": "udr-",
+      "networkTrafficManagerProfiles": "traf-",
+      "networkVirtualNetworkGateways": "vgw-",
+      "networkVirtualNetworks": "vnet-",
+      "networkVirtualNetworksSubnets": "snet-",
+      "networkVirtualNetworksVirtualNetworkPeerings": "peer-",
+      "networkVirtualWans": "vwan-",
+      "networkVpnGateways": "vpng-",
+      "networkVpnGatewaysVpnConnections": "vcn-",
+      "networkVpnGatewaysVpnSites": "vst-",
+      "notificationHubsNamespaces": "ntfns-",
+      "notificationHubsNamespacesNotificationHubs": "ntf-",
+      "operationalInsightsWorkspaces": "log-",
+      "portalDashboards": "dash-",
+      "powerBIDedicatedCapacities": "pbi-",
+      "purviewAccounts": "pview-",
+      "recoveryServicesVaults": "rsv-",
+      "resourcesResourceGroups": "rg-",
+      "searchSearchServices": "srch-",
+      "serviceBusNamespaces": "sb-",
+      "serviceBusNamespacesQueues": "sbq-",
+      "serviceBusNamespacesTopics": "sbt-",
+      "serviceEndPointPolicies": "se-",
+      "serviceFabricClusters": "sf-",
+      "signalRServiceSignalR": "sigr",
+      "sqlManagedInstances": "sqlmi-",
+      "sqlServers": "sql-",
+      "sqlServersDataWarehouse": "sqldw-",
+      "sqlServersDatabases": "sqldb-",
+      "sqlServersDatabasesStretch": "sqlstrdb-",
+      "storageStorageAccounts": "st",
+      "storageStorageAccountsVm": "stvm",
+      "storSimpleManagers": "ssimp",
+      "streamAnalyticsCluster": "asa-",
+      "synapseWorkspaces": "syn",
+      "synapseWorkspacesAnalyticsWorkspaces": "synw",
+      "synapseWorkspacesSqlPoolsDedicated": "syndp",
+      "synapseWorkspacesSqlPoolsSpark": "synsp",
+      "timeSeriesInsightsEnvironments": "tsi-",
+      "webServerFarms": "plan-",
+      "webSitesAppService": "app-",
+      "webSitesAppServiceEnvironment": "ase-",
+      "webSitesFunctions": "func-",
+      "webStaticSites": "stapp-",
+      "cognitiveServicesMultiService": "ais-",
+      "cognitiveServicesOpenAI": "oai-",
+      "cognitiveServicesComputerVision": "cv-",
+      "cognitiveServicesContentModerator": "cm-",
+      "cognitiveServicesContentSafety": "cs-",
+      "cognitiveServicesFace": "face-",
+      "cognitiveServicesHealthInsights": "hi-",
+      "cognitiveServicesImmersiveReader": "ir-",
+      "cognitiveServicesTranslator": "trsl-",
+      "batchBatchAccounts": "ba-",
+      "communicationCommunicationServices": "acs-",
+      "digitalTwinsDigitalTwinsInstances": "dt-",
+      "eventGridNamespaces": "evgns-",
+      "eventGridSystemTopics": "egst-",
+      "iotProvisioningServices": "provs-",
+      "iotProvisioningServicesCertificates": "pcert-",
+      "machineLearningServicesWorkspacesHub": "hub-",
+      "machineLearningServicesWorkspacesProject": "proj-",
+      "maintenanceMaintenanceConfigurations": "mc-",
+      "mapsAccounts": "map-",
+      "networkPrivateEndpoints": "pep-",
+      "networkPrivateDnsResolvers": "dnspr-",
+      "networkPrivateDnsResolversInboundEndpoints": "in-",
+      "networkPrivateDnsResolversOutboundEndpoints": "out-",
+      "networkDnsForwardingRulesets": "dnsfrs-",
+      "networkExpressRouteGateways": "ergw-",
+      "networkFrontDoorProfiles": "afd-",
+      "networkFrontDoorEndpoints": "fde-",
+      "networkIpGroups": "ipg-",
+      "networkNetworkSecurityPerimeters": "nsp-",
+      "networkRouteServers": "rtserv-",
+      "resourcesDeploymentScripts": "script-",
+      "resourcesTemplateSpecs": "ts-",
+      "serviceFabricManagedClusters": "sfmc-",
+      "signalRServiceWebPubSub": "wps-",
+      "sqlServersJobAgents": "sqlja-",
+      "sqlServersElasticPools": "sqlep-",
+      "videoIndexerAccounts": "avi-",
+      "dashboardGrafana": "amg-",
+      "insightsDataCollectionRules": "dcr-",
+      "insightsDataCollectionEndpoints": "dce-",
+      "alertsManagementActionRules": "apr-",
+      "operationalInsightsQueryPacks": "pack-",
+      "synapsePrivateLinkHubs": "synplh-",
+      "locations": {
+        "eastus": "eus",
+        "eastus2": "eus2",
+        "westus": "wus",
+        "westus2": "wus2",
+        "westus3": "wus3",
+        "centralus": "cus",
+        "northcentralus": "ncus",
+        "southcentralus": "scus",
+        "westcentralus": "wcus",
+        "northeurope": "neu",
+        "westeurope": "weu",
+        "uksouth": "uks",
+        "ukwest": "ukw",
+        "australiaeast": "aue",
+        "australiasoutheast": "ause",
+        "australiacentral": "auc",
+        "australiacentral2": "auc2",
+        "eastasia": "ea",
+        "southeastasia": "sea",
+        "japaneast": "jpe",
+        "japanwest": "jpw",
+        "koreacentral": "krc",
+        "koreasouth": "krs",
+        "centralindia": "cin",
+        "southindia": "sin",
+        "westindia": "win",
+        "canadacentral": "cac",
+        "canadaeast": "cae",
+        "brazilsouth": "brs",
+        "brazilsoutheast": "brse",
+        "francecentral": "frc",
+        "francesouth": "frs",
+        "germanywestcentral": "gwc",
+        "germanynorth": "gn",
+        "norwayeast": "noe",
+        "norwaywest": "now",
+        "switzerlandnorth": "szn",
+        "switzerlandwest": "szw",
+        "uaenorth": "uaen",
+        "uaecentral": "uaec",
+        "southafricanorth": "san",
+        "southafricawest": "saw",
+        "chinaeast": "cne",
+        "chinaeast2": "cne2",
+        "chinanorth": "cnn",
+        "chinanorth2": "cnn2",
+        "chinanorth3": "cnn3",
+        "usgovvirginia": "usva",
+        "usgovtexas": "ustx",
+        "usgovarizona": "usaz",
+        "usdodeast": "usde",
+        "usdodcentral": "usdc"
+      }
+    },
+    "abbrs": "[variables('$fxv#0')]",
+    "tags": {
+      "azd-env-name": "[parameters('environmentName')]",
+      "env": "[parameters('environment')]",
+      "owner": "will.peters",
+      "costCenter": "telnyx-mcp",
+      "WorkloadName": "[variables('workloadName')]",
+      "Environment": "[parameters('environment')]",
+      "DataClassification": "[parameters('dataClassification')]",
+      "Criticality": "[parameters('businessCriticality')]",
+      "BusinessUnit": "[parameters('businessUnit')]",
+      "OpsCommitment": "[if(equals(parameters('environment'), 'prod'), 'Platform operations', 'Baseline only')]",
+      "OpsTeam": "[parameters('opsTeam')]",
+      "ProjectName": "Telnyx MCP Server",
+      "CostCenter": "[format('{0}-{1}', parameters('businessUnit'), parameters('environment'))]"
+    },
+    "workloadName": "telnyxmcp",
+    "locationShortName": "[if(and(contains(variables('abbrs'), 'locations'), contains(variables('abbrs').locations, parameters('location'))), variables('abbrs').locations[parameters('location')], parameters('location'))]",
+    "oauthAppName": "telnyx-mcp-server"
+  },
+  "imports": {
+    "microsoftGraphV1": {
+      "provider": "MicrosoftGraph",
+      "version": "0.2.0-preview"
+    }
+  },
+  "resources": {
+    "rg": {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2021-04-01",
+      "name": "[if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]"
+    },
+    "githubFIC": {
+      "condition": "[parameters('createGitHubFIC')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "github-fic-app",
+      "scope": "/",
+      "location": "[deployment().location]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "gitHubOwner": {
+            "value": "[parameters('gitHubOwner')]"
+          },
+          "gitHubRepo": {
+            "value": "[parameters('gitHubRepo')]"
+          },
+          "displayName": {
+            "value": "GitHub Actions - Telnyx MCP Server"
+          },
+          "appName": {
+            "value": "github-actions-telnyx-mcp"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-08-01/tenantDeploymentTemplate.json#",
+          "languageVersion": "2.1-experimental",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.36.1.42791",
+              "templateHash": "13437732956731593191"
+            }
+          },
+          "parameters": {
+            "gitHubOwner": {
+              "type": "string",
+              "metadata": {
+                "description": "GitHub organization or username"
+              }
+            },
+            "gitHubRepo": {
+              "type": "string",
+              "metadata": {
+                "description": "GitHub repository name"
+              }
+            },
+            "gitHubBranch": {
+              "type": "string",
+              "defaultValue": "main",
+              "metadata": {
+                "description": "GitHub branch name"
+              }
+            },
+            "displayName": {
+              "type": "string",
+              "defaultValue": "GitHub Actions Deploy",
+              "metadata": {
+                "description": "Display name for the GitHub Actions app"
+              }
+            },
+            "appName": {
+              "type": "string",
+              "defaultValue": "github-actions-deploy",
+              "metadata": {
+                "description": "Unique name for the GitHub Actions app"
+              }
+            }
+          },
+          "variables": {
+            "githubOIDCProvider": "https://token.actions.githubusercontent.com",
+            "microsoftEntraAudience": "api://AzureADTokenExchange"
+          },
+          "imports": {
+            "microsoftGraphV1": {
+              "provider": "MicrosoftGraph",
+              "version": "0.2.0-preview"
+            }
+          },
+          "resources": {
+            "githubApp::mainBranchFIC": {
+              "import": "microsoftGraphV1",
+              "type": "Microsoft.Graph/applications/federatedIdentityCredentials@v1.0",
+              "properties": {
+                "name": "[format('{0}/github-main-branch', reference('githubApp').uniqueName)]",
+                "audiences": [
+                  "[variables('microsoftEntraAudience')]"
+                ],
+                "issuer": "[variables('githubOIDCProvider')]",
+                "subject": "[format('repo:{0}/{1}:ref:refs/heads/{2}', parameters('gitHubOwner'), parameters('gitHubRepo'), parameters('gitHubBranch'))]",
+                "description": "[format('GitHub Actions for {0} branch', parameters('gitHubBranch'))]"
+              },
+              "dependsOn": [
+                "githubApp"
+              ]
+            },
+            "githubApp::prFIC": {
+              "import": "microsoftGraphV1",
+              "type": "Microsoft.Graph/applications/federatedIdentityCredentials@v1.0",
+              "properties": {
+                "name": "[format('{0}/github-pull-request', reference('githubApp').uniqueName)]",
+                "audiences": [
+                  "[variables('microsoftEntraAudience')]"
+                ],
+                "issuer": "[variables('githubOIDCProvider')]",
+                "subject": "[format('repo:{0}/{1}:pull_request', parameters('gitHubOwner'), parameters('gitHubRepo'))]",
+                "description": "GitHub Actions for pull requests"
+              },
+              "dependsOn": [
+                "githubApp"
+              ]
+            },
+            "githubApp::envFIC": {
+              "import": "microsoftGraphV1",
+              "type": "Microsoft.Graph/applications/federatedIdentityCredentials@v1.0",
+              "properties": {
+                "name": "[format('{0}/github-environment', reference('githubApp').uniqueName)]",
+                "audiences": [
+                  "[variables('microsoftEntraAudience')]"
+                ],
+                "issuer": "[variables('githubOIDCProvider')]",
+                "subject": "[format('repo:{0}/{1}:environment:production', parameters('gitHubOwner'), parameters('gitHubRepo'))]",
+                "description": "GitHub Actions for production environment"
+              },
+              "dependsOn": [
+                "githubApp"
+              ]
+            },
+            "githubApp": {
+              "import": "microsoftGraphV1",
+              "type": "Microsoft.Graph/applications@v1.0",
+              "properties": {
+                "displayName": "[parameters('displayName')]",
+                "uniqueName": "[parameters('appName')]"
+              }
+            },
+            "githubSp": {
+              "import": "microsoftGraphV1",
+              "type": "Microsoft.Graph/servicePrincipals@v1.0",
+              "properties": {
+                "appId": "[reference('githubApp').appId]",
+                "displayName": "[parameters('displayName')]"
+              },
+              "dependsOn": [
+                "githubApp"
+              ]
+            }
+          },
+          "outputs": {
+            "appId": {
+              "type": "string",
+              "value": "[reference('githubApp').appId]"
+            },
+            "servicePrincipalId": {
+              "type": "string",
+              "value": "[reference('githubSp').id]"
+            },
+            "displayName": {
+              "type": "string",
+              "value": "[reference('githubApp').displayName]"
+            }
+          }
+        }
+      }
+    },
+    "githubRBAC": {
+      "condition": "[parameters('createGitHubFIC')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "github-fic-rbac",
+      "resourceGroup": "[if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "servicePrincipalId": {
+            "value": "[reference('githubFIC').outputs.servicePrincipalId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.36.1.42791",
+              "templateHash": "7777896885924397255"
+            }
+          },
+          "parameters": {
+            "servicePrincipalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Service principal ID of the GitHub Actions app"
+              }
+            },
+            "resourceGroupId": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().id]",
+              "metadata": {
+                "description": "Resource group to grant access to"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(parameters('resourceGroupId'), parameters('servicePrincipalId'), 'github-actions-contributor')]",
+              "properties": {
+                "principalId": "[parameters('servicePrincipalId')]",
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ],
+          "outputs": {
+            "roleAssignmentId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Authorization/roleAssignments', guid(parameters('resourceGroupId'), parameters('servicePrincipalId'), 'github-actions-contributor'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "githubFIC",
+        "rg"
+      ]
+    },
+    "web": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "web",
+      "resourceGroup": "[if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[format('{0}{1}-{2}-{3}-001', variables('abbrs').webSitesAppService, variables('workloadName'), parameters('environment'), variables('locationShortName'))]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('tags')]"
+          },
+          "appServicePlanId": {
+            "value": "[reference('appServicePlan').outputs.id.value]"
+          },
+          "enableBuiltInAuth": {
+            "value": false
+          },
+          "authClientId": {
+            "value": ""
+          },
+          "appSettings": {
+            "value": {
+              "APPLICATIONINSIGHTS_CONNECTION_STRING": "[reference('monitoring').outputs.applicationInsightsConnectionString.value]",
+              "ApplicationInsightsAgent_EXTENSION_VERSION": "~3",
+              "XDT_MicrosoftApplicationInsights_Mode": "recommended",
+              "APPLICATION_INSIGHTS_KEY": "[reference('monitoring').outputs.applicationInsightsInstrumentationKey.value]",
+              "AZURE_KEY_VAULT_ENDPOINT": "[if(parameters('useKeyVault'), reference('keyVault').outputs.uri.value, '')]",
+              "USE_KEY_VAULT": "[if(parameters('useKeyVault'), 'true', 'false')]",
+              "AZURE_CLIENT_ID": "[if(not(empty(parameters('existingOauthAppClientId'))), parameters('existingOauthAppClientId'), '')]",
+              "AZURE_TENANT_ID": "[tenant().tenantId]",
+              "JWT_SECRET_KEY": "[if(parameters('useKeyVault'), format('@Microsoft.KeyVault(VaultName={0};SecretName=jwt-secret-key)', reference('keyVault').outputs.name.value), parameters('jwtSecretKey'))]",
+              "JWT_ALGORITHM": "HS256",
+              "JWT_EXPIRATION_HOURS": "24",
+              "TELNYX_API_KEY": "[if(parameters('useKeyVault'), format('@Microsoft.KeyVault(VaultName={0};SecretName=telnyx-api-key)', reference('keyVault').outputs.name.value), parameters('telnyxApiKey'))]",
+              "ENVIRONMENT": "[parameters('environment')]",
+              "LOG_LEVEL": "[if(equals(parameters('environment'), 'prod'), 'WARNING', if(equals(parameters('environment'), 'staging'), 'INFO', 'DEBUG'))]",
+              "ENABLE_PII_REDACTION": "[if(equals(parameters('environment'), 'prod'), 'true', 'false')]",
+              "REDIS_URL": "[if(parameters('useRedis'), listOutputsWithSecureValues(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))), 'Microsoft.Resources/deployments', 'redis'), '2022-09-01').connectionString, '')]",
+              "USE_REDIS": "[if(parameters('useRedis'), 'true', 'false')]",
+              "MCP_ALLOWED_ORIGINS": "https://claude.ai,https://chat.anthropic.com",
+              "SCM_DO_BUILD_DURING_DEPLOYMENT": "true",
+              "ENABLE_ORYX_BUILD": "true",
+              "PYTHON_ENABLE_GUNICORN_MULTIWORKERS": "true",
+              "GUNICORN_CMD_ARGS": "[if(equals(parameters('environment'), 'prod'), '--log-level warning', if(equals(parameters('environment'), 'staging'), '--log-level info', '--log-level debug'))]",
+              "WEBSITES_PORT": "8000",
+              "WEBSITE_RUN_FROM_PACKAGE": "0",
+              "WEBSITES_CONTAINER_START_TIME_LIMIT": "1800",
+              "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "false",
+              "WEBSITE_WEBDEPLOY_USE_SCM": "true"
+            }
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.36.1.42791",
+              "templateHash": "6829869938168246624"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            },
+            "appServicePlanId": {
+              "type": "string"
+            },
+            "appSettings": {
+              "type": "secureObject",
+              "defaultValue": {}
+            },
+            "authClientId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "The client ID of the Microsoft Entra application"
+              }
+            },
+            "enableBuiltInAuth": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Enable Built-in Authentication"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Web/sites",
+              "apiVersion": "2022-03-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[union(parameters('tags'), createObject('azd-service-name', 'web'))]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "serverFarmId": "[parameters('appServicePlanId')]",
+                "httpsOnly": true,
+                "siteConfig": {
+                  "copy": [
+                    {
+                      "name": "appSettings",
+                      "count": "[length(items(parameters('appSettings')))]",
+                      "input": {
+                        "name": "[items(parameters('appSettings'))[copyIndex('appSettings')].key]",
+                        "value": "[items(parameters('appSettings'))[copyIndex('appSettings')].value]"
+                      }
+                    }
+                  ],
+                  "linuxFxVersion": "PYTHON|3.11",
+                  "alwaysOn": true,
+                  "ftpsState": "FtpsOnly",
+                  "minTlsVersion": "1.2",
+                  "scmMinTlsVersion": "1.2",
+                  "healthCheckPath": "/health"
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Web/sites/config",
+              "apiVersion": "2022-03-01",
+              "name": "[format('{0}/{1}', parameters('name'), 'logs')]",
+              "properties": {
+                "applicationLogs": {
+                  "fileSystem": {
+                    "level": "Information"
+                  }
+                },
+                "detailedErrorMessages": {
+                  "enabled": true
+                },
+                "failedRequestsTracing": {
+                  "enabled": true
+                },
+                "httpLogs": {
+                  "fileSystem": {
+                    "enabled": true,
+                    "retentionInDays": 1,
+                    "retentionInMb": 35
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', parameters('name'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('enableBuiltInAuth')]",
+              "type": "Microsoft.Web/sites/config",
+              "apiVersion": "2022-03-01",
+              "name": "[format('{0}/{1}', parameters('name'), 'authsettingsV2')]",
+              "properties": {
+                "globalValidation": {
+                  "requireAuthentication": true,
+                  "unauthenticatedClientAction": "RedirectToLoginPage",
+                  "redirectToProvider": "azureactivedirectory"
+                },
+                "identityProviders": {
+                  "azureActiveDirectory": {
+                    "enabled": true,
+                    "registration": {
+                      "clientId": "[parameters('authClientId')]",
+                      "clientSecretSettingName": "OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID",
+                      "openIdIssuer": "[format('{0}{1}/v2.0', environment().authentication.loginEndpoint, tenant().tenantId)]"
+                    },
+                    "validation": {
+                      "defaultAuthorizationPolicy": {
+                        "allowedApplications": []
+                      }
+                    }
+                  }
+                },
+                "login": {
+                  "tokenStore": {
+                    "enabled": true
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', parameters('name'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "uri": {
+              "type": "string",
+              "value": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', parameters('name')), '2022-03-01').defaultHostName)]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            },
+            "principalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Web/sites', parameters('name')), '2022-03-01', 'full').identity.principalId]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "appServicePlan",
+        "keyVault",
+        "monitoring",
+        "redis",
+        "rg"
+      ]
+    },
+    "oauthAppFIC": {
+      "condition": "[parameters('createOAuthApp')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "oauth-app-fic",
+      "resourceGroup": "[if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "clientAppName": {
+            "value": "[format('{0}-{1}', variables('oauthAppName'), parameters('environment'))]"
+          },
+          "clientAppDisplayName": {
+            "value": "[parameters('oauthAppDisplayName')]"
+          },
+          "webAppEndpoint": {
+            "value": "[format('https://{0}{1}-{2}-{3}-001.azurewebsites.net', variables('abbrs').webSitesAppService, variables('workloadName'), parameters('environment'), variables('locationShortName'))]"
+          },
+          "webAppIdentityId": {
+            "value": "[reference('web').outputs.principalId.value]"
+          },
+          "issuer": {
+            "value": "[format('{0}{1}/v2.0', environment().authentication.loginEndpoint, tenant().tenantId)]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.1-experimental",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.36.1.42791",
+              "templateHash": "7492112350898518206"
+            }
+          },
+          "parameters": {
+            "cloudEnvironment": {
+              "type": "string",
+              "defaultValue": "[environment().name]",
+              "metadata": {
+                "description": "Specifies the name of cloud environment to run this deployment in."
+              }
+            },
+            "audiences": {
+              "type": "object",
+              "defaultValue": {
+                "AzureCloud": {
+                  "uri": "api://AzureADTokenExchange"
+                },
+                "AzureUSGovernment": {
+                  "uri": "api://AzureADTokenExchangeUSGov"
+                },
+                "USNat": {
+                  "uri": "api://AzureADTokenExchangeUSNat"
+                },
+                "USSec": {
+                  "uri": "api://AzureADTokenExchangeUSSec"
+                },
+                "AzureChinaCloud": {
+                  "uri": "api://AzureADTokenExchangeChina"
+                }
+              },
+              "metadata": {
+                "description": "Audience uris for public and national clouds"
+              }
+            },
+            "webAppIdentityId": {
+              "type": "string",
+              "metadata": {
+                "description": "Specifies the ID of the App Service managed identity."
+              }
+            },
+            "clientAppName": {
+              "type": "string",
+              "metadata": {
+                "description": "Specifies the unique name for the client application."
+              }
+            },
+            "clientAppDisplayName": {
+              "type": "string",
+              "metadata": {
+                "description": "Specifies the display name for the client application"
+              }
+            },
+            "clientAppScopes": {
+              "type": "array",
+              "defaultValue": [
+                "User.Read",
+                "offline_access",
+                "openid",
+                "profile"
+              ],
+              "metadata": {
+                "description": "Specifies the scopes that the client application requires."
+              }
+            },
+            "serviceManagementReference": {
+              "type": "string",
+              "defaultValue": ""
+            },
+            "issuer": {
+              "type": "string"
+            },
+            "webAppEndpoint": {
+              "type": "string"
+            }
+          },
+          "variables": {
+            "msGraphAppId": "00000003-0000-0000-c000-000000000000"
+          },
+          "imports": {
+            "microsoftGraphV1": {
+              "provider": "MicrosoftGraph",
+              "version": "0.2.0-preview"
+            }
+          },
+          "resources": {
+            "clientApp::clientAppFic": {
+              "import": "microsoftGraphV1",
+              "type": "Microsoft.Graph/applications/federatedIdentityCredentials@v1.0",
+              "properties": {
+                "name": "[format('{0}/appServiceFic', reference('clientApp').uniqueName)]",
+                "audiences": [
+                  "[parameters('audiences')[parameters('cloudEnvironment')].uri]"
+                ],
+                "issuer": "[parameters('issuer')]",
+                "subject": "[parameters('webAppIdentityId')]",
+                "description": "App Service managed identity federated credential"
+              },
+              "dependsOn": [
+                "clientApp"
+              ]
+            },
+            "msGraphSP": {
+              "existing": true,
+              "import": "microsoftGraphV1",
+              "type": "Microsoft.Graph/servicePrincipals@v1.0",
+              "properties": {
+                "appId": "[variables('msGraphAppId')]"
+              }
+            },
+            "clientApp": {
+              "import": "microsoftGraphV1",
+              "type": "Microsoft.Graph/applications@v1.0",
+              "properties": {
+                "uniqueName": "[parameters('clientAppName')]",
+                "displayName": "[parameters('clientAppDisplayName')]",
+                "signInAudience": "AzureADMyOrg",
+                "serviceManagementReference": "[if(empty(parameters('serviceManagementReference')), null(), parameters('serviceManagementReference'))]",
+                "web": {
+                  "redirectUris": [
+                    "http://localhost:8000/.auth/login/aad/callback",
+                    "[format('{0}/.auth/login/aad/callback', parameters('webAppEndpoint'))]"
+                  ],
+                  "implicitGrantSettings": {
+                    "enableIdTokenIssuance": true
+                  }
+                },
+                "requiredResourceAccess": [
+                  {
+                    "copy": [
+                      {
+                        "name": "resourceAccess",
+                        "count": "[length(parameters('clientAppScopes'))]",
+                        "input": {
+                          "id": "[filter(reference('msGraphSP').oauth2PermissionScopes, lambda('graphScopes', equals(lambdaVariables('graphScopes').value, parameters('clientAppScopes')[copyIndex('resourceAccess')])))[0].id]",
+                          "type": "Scope"
+                        }
+                      }
+                    ],
+                    "resourceAppId": "[variables('msGraphAppId')]"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "msGraphSP"
+              ]
+            },
+            "clientSp": {
+              "import": "microsoftGraphV1",
+              "type": "Microsoft.Graph/servicePrincipals@v1.0",
+              "properties": {
+                "appId": "[reference('clientApp').appId]"
+              },
+              "dependsOn": [
+                "clientApp"
+              ]
+            }
+          },
+          "outputs": {
+            "clientAppId": {
+              "type": "string",
+              "value": "[reference('clientApp').appId]"
+            },
+            "clientSpId": {
+              "type": "string",
+              "value": "[reference('clientSp').id]"
+            },
+            "clientAppObjectId": {
+              "type": "string",
+              "value": "[reference('clientApp').id]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "rg",
+        "web"
+      ]
+    },
+    "webAuthUpdate": {
+      "condition": "[parameters('createOAuthApp')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "web-auth-update",
+      "resourceGroup": "[if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "appServiceName": {
+            "value": "[reference('web').outputs.name.value]"
+          },
+          "clientId": {
+            "value": "[reference('oauthAppFIC').outputs.clientAppId.value]"
+          },
+          "openIdIssuer": {
+            "value": "[format('{0}{1}/v2.0', environment().authentication.loginEndpoint, tenant().tenantId)]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.36.1.42791",
+              "templateHash": "14899551039928590959"
+            }
+          },
+          "parameters": {
+            "appServiceName": {
+              "type": "string"
+            },
+            "clientId": {
+              "type": "string",
+              "metadata": {
+                "description": "The client ID of the Microsoft Entra application."
+              }
+            },
+            "openIdIssuer": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Web/sites/config",
+              "apiVersion": "2022-03-01",
+              "name": "[format('{0}/{1}', parameters('appServiceName'), 'authsettingsV2')]",
+              "properties": {
+                "globalValidation": {
+                  "requireAuthentication": true,
+                  "unauthenticatedClientAction": "RedirectToLoginPage",
+                  "redirectToProvider": "azureactivedirectory"
+                },
+                "identityProviders": {
+                  "azureActiveDirectory": {
+                    "enabled": true,
+                    "registration": {
+                      "clientId": "[parameters('clientId')]",
+                      "clientSecretSettingName": "OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID",
+                      "openIdIssuer": "[parameters('openIdIssuer')]"
+                    },
+                    "validation": {
+                      "defaultAuthorizationPolicy": {
+                        "allowedApplications": []
+                      }
+                    }
+                  }
+                },
+                "login": {
+                  "tokenStore": {
+                    "enabled": true
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "oauthAppFIC",
+        "rg",
+        "web"
+      ]
+    },
+    "webKeyVaultAccess": {
+      "condition": "[parameters('useKeyVault')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "web-keyvault-access",
+      "resourceGroup": "[if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "keyVaultName": {
+            "value": "[reference('keyVault').outputs.name.value]"
+          },
+          "principalId": {
+            "value": "[reference('web').outputs.principalId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.36.1.42791",
+              "templateHash": "13636165252246740430"
+            }
+          },
+          "parameters": {
+            "keyVaultName": {
+              "type": "string"
+            },
+            "principalId": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.KeyVault/vaults/accessPolicies",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('keyVaultName'), 'add')]",
+              "properties": {
+                "accessPolicies": [
+                  {
+                    "tenantId": "[tenant().tenantId]",
+                    "objectId": "[parameters('principalId')]",
+                    "permissions": {
+                      "secrets": [
+                        "get",
+                        "list"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "keyVault",
+        "rg",
+        "web"
+      ]
+    },
+    "appServicePlan": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "appserviceplan",
+      "resourceGroup": "[if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[format('{0}{1}-{2}-{3}-001', variables('abbrs').webServerFarms, variables('workloadName'), parameters('environment'), variables('locationShortName'))]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('tags')]"
+          },
+          "sku": {
+            "value": {
+              "name": "S1",
+              "capacity": 1
+            }
+          },
+          "kind": {
+            "value": "linux"
+          },
+          "reserved": {
+            "value": true
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.36.1.42791",
+              "templateHash": "3558579442969234179"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            },
+            "sku": {
+              "type": "object",
+              "defaultValue": {
+                "name": "B1",
+                "capacity": 1
+              }
+            },
+            "kind": {
+              "type": "string",
+              "defaultValue": "linux"
+            },
+            "reserved": {
+              "type": "bool",
+              "defaultValue": true
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Web/serverfarms",
+              "apiVersion": "2022-03-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": "[parameters('sku')]",
+              "kind": "[parameters('kind')]",
+              "properties": {
+                "reserved": "[parameters('reserved')]"
+              }
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Web/serverfarms', parameters('name'))]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "rg"
+      ]
+    },
+    "keyVault": {
+      "condition": "[parameters('useKeyVault')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "keyvault",
+      "resourceGroup": "[if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[take(format('{0}{1}{2}{3}', variables('abbrs').keyVaultVaults, replace(variables('workloadName'), '-', ''), parameters('environment'), uniqueString(subscriptionResourceId('Microsoft.Resources/resourceGroups', if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))))), 24)]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('tags')]"
+          },
+          "enablePurgeProtection": {
+            "value": "[equals(parameters('environment'), 'prod')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.36.1.42791",
+              "templateHash": "3537507111762870952"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            },
+            "enablePurgeProtection": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Enable purge protection to prevent permanent deletion of secrets"
+              }
+            },
+            "softDeleteRetentionInDays": {
+              "type": "int",
+              "defaultValue": 90,
+              "metadata": {
+                "description": "Enable soft delete with retention period"
+              }
+            },
+            "enableRbacAuthorization": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Enable RBAC authorization instead of access policies"
+              }
+            }
+          },
+          "variables": {
+            "azureAppServicePrincipalId": "abfa0a7c-a6b6-4736-8310-5855508787cd",
+            "keyVaultSecretsUserRole": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.KeyVault/vaults",
+              "apiVersion": "2023-07-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": "[union(createObject('tenantId', tenant().tenantId, 'sku', createObject('family', 'A', 'name', 'standard'), 'enabledForDeployment', false(), 'enabledForDiskEncryption', false(), 'enabledForTemplateDeployment', true(), 'enableSoftDelete', true(), 'softDeleteRetentionInDays', parameters('softDeleteRetentionInDays'), 'enableRbacAuthorization', parameters('enableRbacAuthorization'), 'networkAcls', createObject('bypass', 'AzureServices', 'defaultAction', 'Allow'), 'accessPolicies', if(parameters('enableRbacAuthorization'), createArray(), createArray(createObject('tenantId', tenant().tenantId, 'objectId', 'abfa0a7c-a6b6-4736-8310-5855508787cd', 'permissions', createObject('secrets', createArray('get', 'list'), 'certificates', createArray('get', 'list', 'create', 'import', 'update', 'managecontacts', 'getissuers', 'listissuers', 'setissuers', 'deleteissuers', 'manageissuers')))))), if(parameters('enablePurgeProtection'), createObject('enablePurgeProtection', true()), createObject()))]"
+            },
+            {
+              "condition": "[parameters('enableRbacAuthorization')]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[format('Microsoft.KeyVault/vaults/{0}', parameters('name'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('name')), variables('azureAppServicePrincipalId'), variables('keyVaultSecretsUserRole'))]",
+              "properties": {
+                "roleDefinitionId": "[variables('keyVaultSecretsUserRole')]",
+                "principalId": "[variables('azureAppServicePrincipalId')]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('name'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.KeyVault/vaults', parameters('name'))]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            },
+            "uri": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.KeyVault/vaults', parameters('name')), '2023-07-01').vaultUri]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "rg"
+      ]
+    },
+    "secrets": {
+      "copy": {
+        "name": "secrets",
+        "count": "[length(createArray(createObject('name', 'jwt-secret-key', 'value', parameters('jwtSecretKey')), createObject('name', 'telnyx-api-key', 'value', parameters('telnyxApiKey'))))]"
+      },
+      "condition": "[and(parameters('useKeyVault'), not(empty(createArray(createObject('name', 'jwt-secret-key', 'value', parameters('jwtSecretKey')), createObject('name', 'telnyx-api-key', 'value', parameters('telnyxApiKey')))[copyIndex()].value)))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "[format('secret-{0}', createArray(createObject('name', 'jwt-secret-key', 'value', parameters('jwtSecretKey')), createObject('name', 'telnyx-api-key', 'value', parameters('telnyxApiKey')))[copyIndex()].name)]",
+      "resourceGroup": "[if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "keyVaultName": {
+            "value": "[reference('keyVault').outputs.name.value]"
+          },
+          "name": {
+            "value": "[createArray(createObject('name', 'jwt-secret-key', 'value', parameters('jwtSecretKey')), createObject('name', 'telnyx-api-key', 'value', parameters('telnyxApiKey')))[copyIndex()].name]"
+          },
+          "value": {
+            "value": "[createArray(createObject('name', 'jwt-secret-key', 'value', parameters('jwtSecretKey')), createObject('name', 'telnyx-api-key', 'value', parameters('telnyxApiKey')))[copyIndex()].value]"
+          },
+          "tags": {
+            "value": "[variables('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.36.1.42791",
+              "templateHash": "13064079167881694860"
+            }
+          },
+          "parameters": {
+            "keyVaultName": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "value": {
+              "type": "securestring"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('keyVaultName'), parameters('name'))]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "value": "[parameters('value')]"
+              }
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.KeyVault/vaults/secrets', parameters('keyVaultName'), parameters('name'))]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            },
+            "uri": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.KeyVault/vaults/secrets', parameters('keyVaultName'), parameters('name')), '2023-07-01').secretUri]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "keyVault",
+        "rg"
+      ]
+    },
+    "monitoring": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "monitoring",
+      "resourceGroup": "[if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('tags')]"
+          },
+          "logAnalyticsName": {
+            "value": "[format('{0}{1}-{2}-001', variables('abbrs').operationalInsightsWorkspaces, variables('workloadName'), parameters('environment'))]"
+          },
+          "applicationInsightsName": {
+            "value": "[format('{0}{1}-{2}-001', variables('abbrs').insightsComponents, variables('workloadName'), parameters('environment'))]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.36.1.42791",
+              "templateHash": "3973698821080143635"
+            }
+          },
+          "parameters": {
+            "logAnalyticsName": {
+              "type": "string"
+            },
+            "applicationInsightsName": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2021-12-01-preview",
+              "name": "[parameters('logAnalyticsName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "retentionInDays": 30,
+                "features": {
+                  "searchVersion": 1
+                },
+                "sku": {
+                  "name": "PerGB2018"
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/components",
+              "apiVersion": "2020-02-02",
+              "name": "[parameters('applicationInsightsName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "web",
+              "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsName'))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "applicationInsightsName": {
+              "type": "string",
+              "value": "[parameters('applicationInsightsName')]"
+            },
+            "applicationInsightsConnectionString": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('applicationInsightsName')), '2020-02-02').ConnectionString]"
+            },
+            "applicationInsightsInstrumentationKey": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('applicationInsightsName')), '2020-02-02').InstrumentationKey]"
+            },
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsName'))]"
+            },
+            "logAnalyticsWorkspaceName": {
+              "type": "string",
+              "value": "[parameters('logAnalyticsName')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "rg"
+      ]
+    },
+    "redis": {
+      "condition": "[parameters('useRedis')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "redis",
+      "resourceGroup": "[if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[format('{0}{1}-{2}-001', variables('abbrs').cacheRedis, variables('workloadName'), parameters('environment'))]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[variables('tags')]"
+          },
+          "skuName": {
+            "value": "Basic"
+          },
+          "skuFamily": {
+            "value": "C"
+          },
+          "skuCapacity": {
+            "value": 0
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.36.1.42791",
+              "templateHash": "12918880470918120424"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            },
+            "skuName": {
+              "type": "string",
+              "defaultValue": "Basic",
+              "allowedValues": [
+                "Basic",
+                "Standard",
+                "Premium"
+              ],
+              "metadata": {
+                "description": "The pricing tier of the Redis cache"
+              }
+            },
+            "skuFamily": {
+              "type": "string",
+              "defaultValue": "C",
+              "metadata": {
+                "description": "The SKU family for the Redis cache"
+              }
+            },
+            "skuCapacity": {
+              "type": "int",
+              "defaultValue": 0,
+              "minValue": 0,
+              "maxValue": 6,
+              "metadata": {
+                "description": "The cache capacity"
+              }
+            }
+          },
+          "resources": {
+            "redis": {
+              "type": "Microsoft.Cache/redis",
+              "apiVersion": "2023-08-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "sku": {
+                  "name": "[parameters('skuName')]",
+                  "family": "[parameters('skuFamily')]",
+                  "capacity": "[parameters('skuCapacity')]"
+                },
+                "enableNonSslPort": false,
+                "minimumTlsVersion": "1.2",
+                "redisConfiguration": {
+                  "maxmemory-policy": "allkeys-lru"
+                }
+              }
+            }
+          },
+          "outputs": {
+            "connectionString": {
+              "type": "securestring",
+              "value": "[format('redis://:{0}@{1}:{2}?ssl=true', listKeys('redis', '2023-08-01').primaryKey, reference('redis').hostName, reference('redis').sslPort)]"
+            },
+            "hostName": {
+              "type": "string",
+              "value": "[reference('redis').hostName]"
+            },
+            "sslPort": {
+              "type": "int",
+              "value": "[reference('redis').sslPort]"
+            },
+            "primaryKey": {
+              "type": "securestring",
+              "value": "[listKeys('redis', '2023-08-01').primaryKey]"
+            },
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Cache/redis', parameters('name'))]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "rg"
+      ]
+    },
+    "redisSecret": {
+      "condition": "[and(parameters('useKeyVault'), parameters('useRedis'))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "secret-redis-connection-string",
+      "resourceGroup": "[if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "keyVaultName": {
+            "value": "[reference('keyVault').outputs.name.value]"
+          },
+          "name": {
+            "value": "redis-connection-string"
+          },
+          "value": {
+            "value": "[listOutputsWithSecureValues(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))), 'Microsoft.Resources/deployments', 'redis'), '2022-09-01').connectionString]"
+          },
+          "tags": {
+            "value": "[variables('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.36.1.42791",
+              "templateHash": "13064079167881694860"
+            }
+          },
+          "parameters": {
+            "keyVaultName": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "value": {
+              "type": "securestring"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {}
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('keyVaultName'), parameters('name'))]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "value": "[parameters('value')]"
+              }
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.KeyVault/vaults/secrets', parameters('keyVaultName'), parameters('name'))]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            },
+            "uri": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.KeyVault/vaults/secrets', parameters('keyVaultName'), parameters('name')), '2023-07-01').secretUri]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "keyVault",
+        "redis",
+        "rg"
+      ]
+    }
+  },
+  "outputs": {
+    "APPLICATIONINSIGHTS_CONNECTION_STRING": {
+      "type": "string",
+      "value": "[reference('monitoring').outputs.applicationInsightsConnectionString.value]"
+    },
+    "AZURE_LOCATION": {
+      "type": "string",
+      "value": "[parameters('location')]"
+    },
+    "AZURE_TENANT_ID": {
+      "type": "string",
+      "value": "[tenant().tenantId]"
+    },
+    "WEB_URI": {
+      "type": "string",
+      "value": "[reference('web').outputs.uri.value]"
+    },
+    "RESOURCE_GROUP": {
+      "type": "string",
+      "value": "[if(not(empty(parameters('resourceGroupName'))), parameters('resourceGroupName'), format('{0}{1}-{2}-001', variables('abbrs').resourcesResourceGroups, variables('workloadName'), parameters('environment')))]"
+    },
+    "AZURE_WEB_APP_NAME": {
+      "type": "string",
+      "value": "[reference('web').outputs.name.value]"
+    },
+    "AZURE_KEY_VAULT_NAME": {
+      "type": "string",
+      "value": "[if(parameters('useKeyVault'), reference('keyVault').outputs.name.value, '')]"
+    },
+    "AZURE_KEY_VAULT_ENDPOINT": {
+      "type": "string",
+      "value": "[if(parameters('useKeyVault'), reference('keyVault').outputs.uri.value, '')]"
+    },
+    "OAUTH_APP_CLIENT_ID": {
+      "type": "string",
+      "value": "[if(parameters('createOAuthApp'), reference('oauthAppFIC').outputs.clientAppId.value, '')]"
+    },
+    "OAUTH_APP_OBJECT_ID": {
+      "type": "string",
+      "value": "[if(parameters('createOAuthApp'), reference('oauthAppFIC').outputs.clientAppObjectId.value, '')]"
+    },
+    "GITHUB_ACTIONS_CLIENT_ID": {
+      "type": "string",
+      "value": "[if(parameters('createGitHubFIC'), reference('githubFIC').outputs.appId.value, '')]"
+    },
+    "GITHUB_ACTIONS_TENANT_ID": {
+      "type": "string",
+      "value": "[tenant().tenantId]"
+    },
+    "GITHUB_ACTIONS_SUBSCRIPTION_ID": {
+      "type": "string",
+      "value": "[subscription().subscriptionId]"
+    }
+  }
+}
