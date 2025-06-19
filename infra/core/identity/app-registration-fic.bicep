@@ -1,7 +1,7 @@
 extension microsoftGraphV1
 
 @description('Specifies the name of cloud environment to run this deployment in.')
-param cloudEnvironment string = environment().name
+param cloudEnvironment string = az.environment().name
 
 // NOTE: Microsoft Graph Bicep file deployment is only supported in Public Cloud
 @description('Audience uris for public and national clouds')

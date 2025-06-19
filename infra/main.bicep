@@ -144,8 +144,8 @@ module web './app/web.bicep' = {
     location: location
     tags: tags
     appServicePlanId: appServicePlan.outputs.id
-    enableBuiltInAuth: createOAuthApp
-    authClientId: createOAuthApp ? oauthAppFIC.outputs.clientAppId : ''
+    enableBuiltInAuth: false  // Will be enabled in a separate step after OAuth app is created
+    authClientId: ''
     appSettings: {
       // Application Insights
       APPLICATIONINSIGHTS_CONNECTION_STRING: monitoring.outputs.applicationInsightsConnectionString
@@ -158,7 +158,7 @@ module web './app/web.bicep' = {
       USE_KEY_VAULT: useKeyVault ? 'true' : 'false'
 
       // OAuth Configuration (Built-in Auth handles this)
-      AZURE_CLIENT_ID: createOAuthApp ? oauthAppFIC.outputs.clientAppId : existingOauthAppClientId
+      AZURE_CLIENT_ID: !empty(existingOauthAppClientId) ? existingOauthAppClientId : ''
       AZURE_TENANT_ID: tenant().tenantId
 
       // JWT Configuration
@@ -198,17 +198,36 @@ module web './app/web.bicep' = {
 
 // Create OAuth app registration with Federated Identity Credential for Built-in Auth
 // This replaces the old certificate-based authentication
-var issuer = '${environment().authentication.loginEndpoint}${tenant().tenantId}/v2.0'
+var loginEndpoint = environment().authentication.loginEndpoint
+var tenantId = tenant().tenantId
+var issuer = '${loginEndpoint}${tenantId}/v2.0'
 module oauthAppFIC './core/identity/app-registration-fic.bicep' = if (createOAuthApp) {
   name: 'oauth-app-fic'
-  scope: tenant()
+  scope: rg
   params: {
     clientAppName: '${oauthAppName}-${environment}'
     clientAppDisplayName: oauthAppDisplayName
-    webAppEndpoint: 'https://${web.outputs.uri}'
+    webAppEndpoint: 'https://${abbrs.webSitesAppService}${workloadName}-${environment}-${locationShortName}-001.azurewebsites.net'
     webAppIdentityId: web.outputs.principalId  // App Service managed identity
     issuer: issuer
   }
+  dependsOn: [
+    web
+  ]
+}
+
+// Update web app with Built-in Auth configuration after OAuth app is created
+module webAuthUpdate './core/identity/web-auth-update.bicep' = if (createOAuthApp) {
+  name: 'web-auth-update'
+  scope: rg
+  params: {
+    appServiceName: web.outputs.name
+    clientId: oauthAppFIC.outputs.clientAppId
+    openIdIssuer: issuer
+  }
+  dependsOn: [
+    oauthAppFIC
+  ]
 }
 
 // Grant web app access to Key Vault (conditional)
