@@ -2,8 +2,11 @@
 
 from datetime import datetime, timedelta
 import os
+import time
 from typing import Any, Dict, Optional
+import uuid
 
+from cryptography.hazmat.primitives.serialization import pkcs12
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -20,6 +23,8 @@ AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID")
 AZURE_REDIRECT_URI = os.getenv(
     "AZURE_REDIRECT_URI", "http://localhost:8000/auth/callback"
 )
+# Certificate configuration
+AZURE_CERTIFICATE_THUMBPRINT = os.getenv("AZURE_CERTIFICATE_THUMBPRINT")
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-me-in-production")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRATION_HOURS = int(os.getenv("JWT_EXPIRATION_HOURS", "24"))
@@ -72,22 +77,79 @@ class AuthService:
         return f"{AZURE_AUTH_URL}?{query_string}"
 
     @staticmethod
-    async def exchange_code_for_token(code: str) -> Dict[str, Any]:
-        """Exchange authorization code for access token"""
-        if not AZURE_CLIENT_SECRET:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="OAuth configuration missing. Please set AZURE_CLIENT_SECRET.",
+    def _create_client_assertion() -> str:
+        """Create a client assertion JWT for certificate authentication"""
+        if not AZURE_CERTIFICATE_THUMBPRINT:
+            return None
+
+        # Path where App Service loads the certificate
+        pfx_path = f"/var/ssl/private/{AZURE_CERTIFICATE_THUMBPRINT}.p12"
+
+        try:
+            # Load the certificate and private key
+            with open(pfx_path, "rb") as f:
+                private_key, cert, _ = pkcs12.load_key_and_certificates(
+                    f.read(), None
+                )
+
+            # Create the JWT claims
+            now = int(time.time())
+            claims = {
+                "aud": AZURE_TOKEN_URL,
+                "iss": AZURE_CLIENT_ID,
+                "sub": AZURE_CLIENT_ID,
+                "jti": str(uuid.uuid4()),
+                "iat": now,
+                "exp": now + 600,  # 10 minutes
+                "nbf": now,
+            }
+
+            # Create the JWT with RS256 algorithm and x5t header
+            headers = {"x5t": AZURE_CERTIFICATE_THUMBPRINT}
+            client_assertion = jwt.encode(
+                claims, private_key, algorithm="RS256", headers=headers
             )
 
+            return client_assertion
+        except FileNotFoundError:
+            # Certificate not loaded by App Service - fall back to secret
+            return None
+        except Exception as e:
+            # Log but don't fail - fall back to secret
+            import logging
+
+            logging.warning(f"Failed to create client assertion: {e}")
+            return None
+
+    @staticmethod
+    async def exchange_code_for_token(code: str) -> Dict[str, Any]:
+        """Exchange authorization code for access token using certificate or secret"""
+
+        # Base data for token exchange
         data = {
             "client_id": AZURE_CLIENT_ID,
-            "client_secret": AZURE_CLIENT_SECRET,
             "code": code,
             "grant_type": "authorization_code",
             "redirect_uri": AZURE_REDIRECT_URI,
             "scope": " ".join(SCOPES),
         }
+
+        # Try certificate authentication first
+        client_assertion = AuthService._create_client_assertion()
+        if client_assertion:
+            # Use certificate authentication
+            data["client_assertion_type"] = (
+                "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+            )
+            data["client_assertion"] = client_assertion
+        elif AZURE_CLIENT_SECRET:
+            # Fall back to client secret
+            data["client_secret"] = AZURE_CLIENT_SECRET
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="OAuth configuration missing. Please set either AZURE_CLIENT_SECRET or configure certificate authentication.",
+            )
 
         async with httpx.AsyncClient() as client:
             response = await client.post(AZURE_TOKEN_URL, data=data)

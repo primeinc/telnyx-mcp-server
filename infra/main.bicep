@@ -201,8 +201,10 @@ module web './app/web.bicep' = {
       AZURE_CLIENT_ID: createOAuthApp ? oauthApp.outputs.appId : existingOauthAppClientId
       AZURE_TENANT_ID: tenant().tenantId
       AZURE_REDIRECT_URI: currentEnvRedirectUri
-      AZURE_CERTIFICATE_NAME: createOAuthApp && useKeyVault ? 'oauth-app-cert' : ''
       AZURE_CERTIFICATE_THUMBPRINT: createOAuthApp && useKeyVault ? certificate.outputs.certThumbprint : ''
+
+      // Tell App Service to load the certificate
+      WEBSITE_LOAD_CERTIFICATES: createOAuthApp && useKeyVault ? certificate.outputs.certThumbprint : ''
 
       // JWT Configuration
       JWT_SECRET_KEY: useKeyVault ? '@Microsoft.KeyVault(VaultName=${keyVault.outputs.name};SecretName=jwt-secret-key)' : jwtSecretKey
