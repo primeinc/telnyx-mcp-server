@@ -99,79 +99,11 @@ resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
   tags: tags
 }
 
-// Create managed identity for deployment scripts
-module managedIdentity './core/identity/managed-identity.bicep' = if (createOAuthApp && useKeyVault) {
-  name: 'managed-identity'
-  scope: rg
-  params: {
-    name: '${abbrs.managedIdentityUserAssignedIdentities}${workloadName}-${environment}-${locationShortName}-001'
-    location: location
-    tags: tags
-  }
-}
-
-// Grant managed identity access to Key Vault
-module managedIdentityKeyVaultAccess './core/security/keyvault-access.bicep' = if (createOAuthApp && useKeyVault) {
-  name: 'managed-identity-keyvault-access'
-  scope: rg
-  params: {
-    keyVaultName: keyVault.outputs.name
-    principalId: managedIdentity.outputs.principalId
-  }
-}
-
-// Generate certificate for OAuth app
-module certificate './core/identity/certificate-generator.bicep' = if (createOAuthApp && useKeyVault) {
-  name: 'certificate-generator'
-  scope: rg
-  params: {
-    keyVaultName: keyVault.outputs.name
-    certificateName: 'oauth-app-cert'
-    subjectName: 'CN=TelnyxMCPServer'
-    managedIdentityId: managedIdentity.outputs.id
-    location: location
-    tags: tags
-  }
-  dependsOn: [
-    keyVault  // Ensure Key Vault exists
-    managedIdentity  // Ensure managed identity exists
-  ]
-}
+// REMOVED: Certificate-based authentication modules
+// We now use Built-in Auth with Federated Identity Credentials (no certificates needed)
 
 // OAuth app configuration
 var oauthAppName = 'telnyx-mcp-server' // Shared across all environments
-var currentEnvRedirectUri = 'https://${abbrs.webSitesAppService}${workloadName}-${environment}-${locationShortName}-001.azurewebsites.net/auth/callback'
-
-// Create OAuth app registration with certificate
-// Microsoft Graph resources require tenant scope when called from subscription-scoped template
-module oauthApp './core/identity/oauth-app.bicep' = if (createOAuthApp) {
-  name: 'oauth-app'
-  scope: tenant()
-  params: {
-    appName: oauthAppName // Same name across all environments
-    displayName: oauthAppDisplayName
-    redirectUris: [
-      currentEnvRedirectUri
-      // The module will merge with existing redirect URIs
-    ]
-    enableIdToken: true
-    enableAccessToken: false
-    certKey: useKeyVault ? certificate.outputs.certKey : ''
-    certThumbprint: useKeyVault ? certificate.outputs.certThumbprint : ''
-    certStart: useKeyVault ? certificate.outputs.certStart : ''
-    certEnd: useKeyVault ? certificate.outputs.certEnd : ''
-  }
-}
-
-// Grant OAuth permissions
-module oauthPermissions './core/identity/oauth-permissions.bicep' = if (createOAuthApp) {
-  name: 'oauth-permissions'
-  scope: tenant()
-  params: {
-    oauthServicePrincipalId: oauthApp.outputs.servicePrincipalId
-    scopes: 'User.Read openid profile'
-  }
-}
 
 // Create GitHub Actions FIC - App registration at tenant scope
 module githubFIC './core/identity/github-fic-app.bicep' = if (createGitHubFIC) {
@@ -201,8 +133,7 @@ module githubRBAC './core/identity/github-fic-rbac.bicep' = if (createGitHubFIC)
 // - roleWait: Not needed, Azure handles role propagation automatically with proper dependencies
 // - webCert: Not needed for Linux App Service - certificates are loaded directly from Key Vault in code
 
-// Runtime thumbprint for app settings - use certificate thumbprint from certificate generator
-var certThumbprint = (createOAuthApp && useKeyVault) ? certificate.outputs.certThumbprint : ''
+// REMOVED: Certificate thumbprint no longer needed with Built-in Auth
 
 // The application frontend
 module web './app/web.bicep' = {
@@ -213,6 +144,8 @@ module web './app/web.bicep' = {
     location: location
     tags: tags
     appServicePlanId: appServicePlan.outputs.id
+    enableBuiltInAuth: createOAuthApp
+    authClientId: createOAuthApp ? oauthAppFIC.outputs.clientAppId : ''
     appSettings: {
       // Application Insights
       APPLICATIONINSIGHTS_CONNECTION_STRING: monitoring.outputs.applicationInsightsConnectionString
@@ -224,15 +157,9 @@ module web './app/web.bicep' = {
       AZURE_KEY_VAULT_ENDPOINT: useKeyVault ? keyVault.outputs.uri : ''
       USE_KEY_VAULT: useKeyVault ? 'true' : 'false'
 
-      // OAuth Configuration
-      AZURE_CLIENT_ID: createOAuthApp ? oauthApp.outputs.appId : existingOauthAppClientId
+      // OAuth Configuration (Built-in Auth handles this)
+      AZURE_CLIENT_ID: createOAuthApp ? oauthAppFIC.outputs.clientAppId : existingOauthAppClientId
       AZURE_TENANT_ID: tenant().tenantId
-      AZURE_REDIRECT_URI: currentEnvRedirectUri
-      AZURE_CERTIFICATE_THUMBPRINT: certThumbprint
-      AZURE_KEY_VAULT_NAME: keyVault.outputs.name
-      AZURE_CERTIFICATE_NAME: 'oauth-certificate'
-
-      // WEBSITE_LOAD_CERTIFICATES not used - Linux App Service loads certs from Key Vault directly
 
       // JWT Configuration
       JWT_SECRET_KEY: useKeyVault ? '@Microsoft.KeyVault(VaultName=${keyVault.outputs.name};SecretName=jwt-secret-key)' : jwtSecretKey
@@ -266,6 +193,21 @@ module web './app/web.bicep' = {
       WEBSITES_ENABLE_APP_SERVICE_STORAGE: 'false'
       WEBSITE_WEBDEPLOY_USE_SCM: 'true'
     }
+  }
+}
+
+// Create OAuth app registration with Federated Identity Credential for Built-in Auth
+// This replaces the old certificate-based authentication
+var issuer = '${environment().authentication.loginEndpoint}${tenant().tenantId}/v2.0'
+module oauthAppFIC './core/identity/app-registration-fic.bicep' = if (createOAuthApp) {
+  name: 'oauth-app-fic'
+  scope: tenant()
+  params: {
+    clientAppName: '${oauthAppName}-${environment}'
+    clientAppDisplayName: oauthAppDisplayName
+    webAppEndpoint: 'https://${web.outputs.uri}'
+    webAppIdentityId: web.outputs.principalId  // App Service managed identity
+    issuer: issuer
   }
 }
 
@@ -372,8 +314,8 @@ output AZURE_WEB_APP_NAME string = web.outputs.name
 // Redis connection string is stored in Key Vault for security
 output AZURE_KEY_VAULT_NAME string = useKeyVault ? keyVault.outputs.name : ''
 output AZURE_KEY_VAULT_ENDPOINT string = useKeyVault ? keyVault.outputs.uri : ''
-output OAUTH_APP_CLIENT_ID string = createOAuthApp ? oauthApp.outputs.appId : ''
-output OAUTH_APP_OBJECT_ID string = createOAuthApp ? oauthApp.outputs.objectId : ''
+output OAUTH_APP_CLIENT_ID string = createOAuthApp ? oauthAppFIC.outputs.clientAppId : ''
+output OAUTH_APP_OBJECT_ID string = createOAuthApp ? oauthAppFIC.outputs.clientAppObjectId : ''
 output GITHUB_ACTIONS_CLIENT_ID string = createGitHubFIC ? githubFIC.outputs.appId : ''
 output GITHUB_ACTIONS_TENANT_ID string = tenant().tenantId
 output GITHUB_ACTIONS_SUBSCRIPTION_ID string = subscription().subscriptionId

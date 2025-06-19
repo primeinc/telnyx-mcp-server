@@ -14,6 +14,13 @@ param appSettings object = {}
 // Application Insights connection string is passed via appSettings from main.bicep
 // No need to reference the resource directly
 
+// Authentication parameters for Built-in Auth
+@description('The client ID of the Microsoft Entra application')
+param authClientId string = ''
+
+@description('Enable Built-in Authentication')
+param enableBuiltInAuth bool = false
+
 // Web App
 resource web 'Microsoft.Web/sites@2022-03-01' = {
   name: name
@@ -62,6 +69,40 @@ resource webLogs 'Microsoft.Web/sites/config@2022-03-01' = {
         enabled: true
         retentionInDays: 1
         retentionInMb: 35
+      }
+    }
+  }
+}
+
+// Configure Built-in Authentication (Easy Auth) with Federated Identity Credentials
+resource configAuth 'Microsoft.Web/sites/config@2022-03-01' = if (enableBuiltInAuth) {
+  parent: web
+  name: 'authsettingsV2'
+  properties: {
+    globalValidation: {
+      requireAuthentication: true
+      unauthenticatedClientAction: 'RedirectToLoginPage'
+      redirectToProvider: 'azureactivedirectory'
+    }
+    identityProviders: {
+      azureActiveDirectory: {
+        enabled: true
+        registration: {
+          clientId: authClientId
+          // This special value tells Azure to use managed identity with FIC
+          clientSecretSettingName: 'OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID'
+          openIdIssuer: '${environment().authentication.loginEndpoint}${tenant().tenantId}/v2.0'
+        }
+        validation: {
+          defaultAuthorizationPolicy: {
+            allowedApplications: []
+          }
+        }
+      }
+    }
+    login: {
+      tokenStore: {
+        enabled: true
       }
     }
   }
