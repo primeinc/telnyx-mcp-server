@@ -62,38 +62,31 @@ jobs:
       uses: astral-sh/setup-uv@v4
       with:
         enable-cache: true
-        cache-dependency-glob: "uv.lock"
+        cache-dependency-glob: "src/uv.lock"
 
     - name: Install dependencies
       run: |
-        uv sync --frozen --no-dev
+        cd src && uv sync --frozen --no-dev
 
     - name: Generate requirements.txt for Azure deployment
       run: |
-        uv pip compile pyproject.toml -o requirements.txt
+        uv pip compile src/pyproject.toml -o src/requirements.txt
         echo "Generated requirements.txt for Azure App Service deployment"
         # Verify the requirements.txt was created properly
-        if [ ! -f requirements.txt ]; then
+        if [ ! -f src/requirements.txt ]; then
           echo "Error: requirements.txt was not generated"
           exit 1
         fi
-        echo "Requirements.txt size: $(wc -l < requirements.txt) lines"
+        echo "Requirements.txt size: $(wc -l < src/requirements.txt) lines"
 
     - name: Upload artifact for deployment
       uses: actions/upload-artifact@v4
       with:
         name: python-app
         path: |
-          .
-          !.venv/
-          !.git/
-          !.github/
-          !tests/
-          !scripts/
-          !__pycache__/
-          !*.pyc
-          !.pytest_cache/
-          !.ruff_cache/
+          src/
+          azure.yaml
+          infra/
 
   deploy:
     runs-on: ubuntu-latest

@@ -3,7 +3,7 @@ metadata:
   template: telnyx-mcp-server-remote@1.0.0
 services:
   web:
-    project: .
+    project: ./src
     language: python
     host: appservice
     ignore:
@@ -38,12 +38,8 @@ services:
         windows:
           shell: pwsh
           run: |
-            uv pip compile ../pyproject.toml -o requirements.txt
-            Copy-Item ../appsvc.yaml . -Force
-            Copy-Item ../startup.py . -Force
+            uv pip compile pyproject.toml -o requirements.txt
         posix:
           shell: sh
           run: |
-            uv pip compile ../pyproject.toml -o requirements.txt
-            cp ../appsvc.yaml .
-            cp ../startup.py .
+            uv pip compile pyproject.toml -o requirements.txt
