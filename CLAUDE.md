@@ -74,6 +74,18 @@ uv export --format requirements-txt > requirements.txt
 - **Tool Registration**: Tools are auto-discovered and registered via decorators (@mcp.tool())
 
 ### Authentication Flow (Remote Mode)
+
+#### Built-in Auth with Federated Identity Credentials (FIC)
+When deployed to Azure App Service, the server uses Built-in Authentication (Easy Auth) with Federated Identity Credentials for secretless authentication:
+1. App Service has a system-assigned managed identity
+2. OAuth app registration trusts the managed identity via FIC
+3. No client secrets or certificates needed in the App Service
+4. Authentication flows:
+   - **Browser-based**: Use `/.auth/login/aad` endpoint
+   - **Programmatic (MSAL)**: Send tokens in Authorization header
+5. Server validates auth via `X-MS-CLIENT-PRINCIPAL` header (Built-in Auth) or JWT tokens (MSAL)
+
+#### OAuth Flow Details
 1. OAuth via Azure AD for user authentication
 2. JWT tokens for API authentication
 3. Redis-backed auth store for production (in-memory for development)
@@ -129,6 +141,13 @@ The project includes automated deployment to Azure App Service:
 - Automatic requirements.txt generation
 - Health check endpoints
 - Multi-worker Gunicorn configuration
+
+### Infrastructure Components
+- **App Service**: Linux-based with system-assigned managed identity
+- **Key Vault**: Stores secrets accessed via managed identity
+- **App Registration with FIC**: OAuth app that trusts the App Service's managed identity
+- **Built-in Auth**: Configured via `authsettingsV2` with `OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID`
+- **No certificates or client secrets** required in production
 
 ## Key Files to Understand
 
