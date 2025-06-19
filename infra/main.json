@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.36.1.42791",
-      "templateHash": "11411888278366768625"
+      "templateHash": "17295632742735871653"
     }
   },
   "parameters": {
@@ -726,7 +726,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.36.1.42791",
-              "templateHash": "6829869938168246624"
+              "templateHash": "5046951676463631781"
             }
           },
           "parameters": {
@@ -792,7 +792,8 @@
                   "ftpsState": "FtpsOnly",
                   "minTlsVersion": "1.2",
                   "scmMinTlsVersion": "1.2",
-                  "healthCheckPath": "/health"
+                  "healthCheckPath": "/health",
+                  "appCommandLine": "gunicorn -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --access-logfile - --error-logfile - --log-level debug telnyx_mcp_server.remote.server:app"
                 }
               }
             },
