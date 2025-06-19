@@ -25,10 +25,6 @@ from ..mcp import mcp
 
 # Import authentication
 from .auth import (
-    AZURE_CLIENT_ID,
-    AZURE_CLIENT_SECRET,
-    AZURE_REDIRECT_URI,
-    AZURE_TOKEN_URL,
     AuthService,
     get_current_user,
 )
@@ -46,6 +42,19 @@ from .structured_logging import (
 
 # Load environment variables
 load_dotenv()
+
+# Azure OAuth configuration
+AZURE_CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
+AZURE_CLIENT_SECRET = os.getenv("AZURE_CLIENT_SECRET")
+AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID")
+AZURE_REDIRECT_URI = os.getenv(
+    "AZURE_REDIRECT_URI", "http://localhost:8000/auth/callback"
+)
+AZURE_TOKEN_URL = (
+    f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/oauth2/v2.0/token"
+    if AZURE_TENANT_ID
+    else None
+)
 
 # Configure structured logging
 log_level = os.getenv("LOG_LEVEL", "INFO")

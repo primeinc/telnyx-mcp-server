@@ -15,6 +15,7 @@ import jwt
 load_dotenv()
 
 # Configuration
+AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID")
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-me-in-production")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRATION_HOURS = int(os.getenv("JWT_EXPIRATION_HOURS", "24"))
