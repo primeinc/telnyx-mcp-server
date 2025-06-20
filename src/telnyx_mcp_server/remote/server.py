@@ -1530,10 +1530,12 @@ async def mcp_endpoint(
                             "jsonrpc": "2.0",
                             "id": response_id,
                             "error": {
-                                "code": -32603,
+                                "code": -32000,
                                 "message": "Authentication required",
                                 "data": {
-                                    "oauth_url": f"{base_url}/.well-known/oauth-authorization-server"
+                                    "type": "oauth2",
+                                    "authorization_url": f"{base_url}/authorize",
+                                    "metadata_url": f"{base_url}/.well-known/oauth-authorization-server",
                                 },
                             },
                         }
@@ -1699,10 +1701,12 @@ async def mcp_sse_stream(
                     "jsonrpc": "2.0",
                     "id": None,
                     "error": {
-                        "code": -32603,
+                        "code": -32000,
                         "message": "Authentication required",
                         "data": {
-                            "oauth_url": f"{base_url}/.well-known/oauth-authorization-server"
+                            "type": "oauth2",
+                            "authorization_url": f"{base_url}/authorize",
+                            "metadata_url": f"{base_url}/.well-known/oauth-authorization-server",
                         },
                     },
                 }
