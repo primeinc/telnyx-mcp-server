@@ -929,10 +929,17 @@ async def oauth_protected_resource(request: Request):
     else:
         base_url = str(request.base_url).rstrip("/")
 
+    # Point to Microsoft's authorization server
+    if not AZURE_TENANT_ID:
+        logger.error("AZURE_TENANT_ID not configured")
+        return Response(
+            status_code=500, content="Authorization server not configured"
+        )
+
     return {
         "resource": base_url,
         "authorization_servers": [
-            f"{base_url}/.well-known/oauth-authorization-server"
+            f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/v2.0"
         ],
         "bearer_methods_supported": ["header"],
         "resource_signing_alg_values_supported": ["HS256"],
