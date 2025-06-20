@@ -26,7 +26,7 @@ class AzureAuthConfig(BaseSettings):
 
     # Easy Auth Configuration
     auth_enabled: bool = Field(
-        default=False,
+        default=True,
         env="WEBSITE_AUTH_ENABLED",
         description="Whether Azure Easy Auth is enabled (set by App Service)",
     )
@@ -136,6 +136,15 @@ class AzureAuthConfig(BaseSettings):
     @classmethod
     def parse_bool_from_string(cls, v):
         """Parse boolean from string values."""
+        import os
+
+        # Debug logging for WEBSITE_AUTH_ENABLED
+        if hasattr(cls, "__name__") and "auth_enabled" in str(v):
+            actual_env_val = os.getenv("WEBSITE_AUTH_ENABLED", "NOT_FOUND")
+            print(
+                f"DEBUG: WEBSITE_AUTH_ENABLED env var = '{actual_env_val}', received value = '{v}', type = {type(v)}"
+            )
+
         if isinstance(v, str):
             return v.lower() in ("true", "1", "yes", "on")
         return bool(v)
@@ -191,6 +200,14 @@ class AzureAuthConfig(BaseSettings):
 
     def log_configuration(self, logger):
         """Log non-sensitive configuration for debugging."""
+        import os
+
+        # Debug the auth_enabled issue
+        raw_env_val = os.getenv("WEBSITE_AUTH_ENABLED", "NOT_SET")
+        logger.info(
+            f"DEBUG auth_enabled: self.auth_enabled={self.auth_enabled}, raw_env_var='{raw_env_val}'"
+        )
+
         logger.info(
             "Azure Auth Configuration",
             extra={
