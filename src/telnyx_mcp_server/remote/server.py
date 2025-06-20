@@ -72,47 +72,35 @@ def load_git_info() -> Dict[str, str]:
         "build_number": "unknown",
     }
 
-    # Try to load from git_info.json file first
+    # Load from git_info.json file created by GitHub workflow
     try:
-        with open("git_info.json", "r") as f:
+        # This file is located in src/git_info.json in the deployment
+        src_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        git_info_path = os.path.join(src_dir, "git_info.json")
+        with open(git_info_path, "r") as f:
             file_info = json.load(f)
             git_info.update(file_info)
             # Return first 7 characters of commit hash
             if git_info["commit"] != "unknown":
                 git_info["commit"] = git_info["commit"][:7]
             return git_info
-    except Exception:
-        pass
-
-    # Fallback to environment variable if file not found
-    commit_hash = os.getenv("GIT_COMMIT_HASH")
-    if commit_hash:
-        git_info["commit"] = commit_hash[:7]
-        return git_info
-
-    # Final fallback to git command for local development
-    try:
-        import subprocess
-
-        result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
+    except Exception as e:
+        logger.warning(
+            f"Could not load git_info.json from {git_info_path}: {e}"
         )
-        git_info["commit"] = result.stdout.strip()
+        # For local development, try git command
+        try:
+            import subprocess
 
-        # Try to get branch name
-        branch_result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        git_info["branch"] = branch_result.stdout.strip()
-    except Exception:
-        # If git is not available or we're not in a git repo
-        pass
+            result = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            git_info["commit"] = result.stdout.strip()
+        except Exception:
+            pass
 
     return git_info
 
