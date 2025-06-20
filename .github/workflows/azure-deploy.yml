@@ -141,8 +141,7 @@ jobs:
           [
             {"name": "TELNYX_API_KEY", "value": "${{ secrets.TELNYX_API_KEY }}"},
             {"name": "JWT_SECRET_KEY", "value": "${{ secrets.JWT_SECRET_KEY }}"},
-            {"name": "AZURE_CLIENT_ID", "value": "${{ secrets.AZURE_CLIENT_ID }}"},
-            {"name": "AZURE_CLIENT_SECRET", "value": "${{ secrets.AZURE_CLIENT_SECRET }}"},
+            {"name": "AZURE_CLIENT_ID", "value": "${{ secrets.AZURE_OAUTH_CLIENT_ID }}"},
             {"name": "AZURE_TENANT_ID", "value": "${{ secrets.AZURE_TENANT_ID }}"},
             {"name": "AZURE_REDIRECT_URI", "value": "https://${{ steps.get-webapp-name.outputs.WEBAPP_NAME }}.azurewebsites.net/auth/callback"},
             {"name": "ENVIRONMENT", "value": "${{ needs.determine-environment.outputs.environment }}"},
