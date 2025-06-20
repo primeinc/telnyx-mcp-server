@@ -87,19 +87,34 @@ __version__ = "0.5.0"
 PROTOCOL_VERSION = "2025-03-26"
 
 
-def get_git_commit_id() -> str:
-    """Get the current git commit ID.
+def load_git_info() -> Dict[str, str]:
+    """Load git information from embedded file or environment."""
+    git_info = {
+        "commit": "unknown",
+        "branch": "unknown",
+        "build_time": "unknown",
+        "build_number": "unknown",
+    }
 
-    First tries to get from environment variable (set during deployment),
-    then falls back to git command for local development.
-    """
-    # Check for environment variable first (set by GitHub Actions)
+    # Try to load from git_info.json file first
+    try:
+        with open("git_info.json", "r") as f:
+            file_info = json.load(f)
+            git_info.update(file_info)
+            # Return first 7 characters of commit hash
+            if git_info["commit"] != "unknown":
+                git_info["commit"] = git_info["commit"][:7]
+            return git_info
+    except Exception:
+        pass
+
+    # Fallback to environment variable if file not found
     commit_hash = os.getenv("GIT_COMMIT_HASH")
     if commit_hash:
-        # Return first 7 characters for short hash
-        return commit_hash[:7]
+        git_info["commit"] = commit_hash[:7]
+        return git_info
 
-    # Fallback to git command for local development
+    # Final fallback to git command for local development
     try:
         import subprocess
 
@@ -109,14 +124,26 @@ def get_git_commit_id() -> str:
             text=True,
             check=True,
         )
-        return result.stdout.strip()
+        git_info["commit"] = result.stdout.strip()
+
+        # Try to get branch name
+        branch_result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        git_info["branch"] = branch_result.stdout.strip()
     except Exception:
         # If git is not available or we're not in a git repo
-        return "unknown"
+        pass
+
+    return git_info
 
 
-# Get commit ID at startup
-GIT_COMMIT = get_git_commit_id()
+# Load git info at startup
+GIT_INFO = load_git_info()
+GIT_COMMIT = GIT_INFO["commit"]
 
 
 class TelnyxMCPServer:
@@ -664,7 +691,10 @@ async def health_check():
         "status": "healthy",
         "service": "telnyx-mcp-server",
         "version": __version__,
-        "git_commit": os.getenv("GIT_COMMIT_HASH", "unknown"),
+        "git_commit": GIT_INFO["commit"],
+        "git_branch": GIT_INFO["branch"],
+        "build_time": GIT_INFO["build_time"],
+        "build_number": GIT_INFO["build_number"],
         "protocol_version": PROTOCOL_VERSION,
         "timestamp": time.time(),
     }

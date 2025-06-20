@@ -22,3 +22,15 @@ services:
             echo "Generating requirements.txt..."
             uv pip compile pyproject.toml -o requirements.txt
             echo "Generated requirements.txt with $(wc -l < requirements.txt) lines"
+
+            # Create git info file
+            echo "Creating git info file..."
+            cat > git_info.json <<EOF
+            {
+              "commit": "$(git rev-parse HEAD 2>/dev/null || echo 'unknown')",
+              "branch": "$(git branch --show-current 2>/dev/null || echo 'unknown')",
+              "build_time": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "build_number": "${AZD_DEPLOYMENT_ID:-local}"
+            }
+            EOF
+            echo "Git info embedded in package"

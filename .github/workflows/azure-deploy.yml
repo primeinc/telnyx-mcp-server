@@ -78,6 +78,18 @@ jobs:
         STEP_END=$(date +%s)
         echo "Generated requirements.txt with $(wc -l < requirements.txt) lines (took $((STEP_END - STEP_START))s)"
 
+        # Embed git commit info
+        echo "Creating git info file..."
+        cat > git_info.json <<EOF
+        {
+          "commit": "${{ github.sha }}",
+          "branch": "${{ github.ref_name }}",
+          "build_time": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+          "build_number": "${{ github.run_number }}"
+        }
+        EOF
+        echo "Git info embedded in package"
+
         # Create virtual environment named antenv
         echo "Step 2: Creating virtual environment..."
         STEP_START=$(date +%s)
@@ -151,37 +163,36 @@ jobs:
 
         echo "WEBAPP_NAME=$WEBAPP_NAME" >> $GITHUB_OUTPUT
 
-    - name: Configure App Settings
-      uses: azure/appservice-settings@v1
-      with:
-        app-name: ${{ steps.get-webapp-name.outputs.WEBAPP_NAME }}
-        app-settings-json: |
-          [
-            {"name": "TELNYX_API_KEY", "value": "${{ secrets.TELNYX_API_KEY }}"},
-            {"name": "JWT_SECRET_KEY", "value": "${{ secrets.JWT_SECRET_KEY }}"},
-            {"name": "AZURE_CLIENT_ID", "value": "${{ secrets.AZURE_OAUTH_CLIENT_ID }}"},
-            {"name": "AZURE_TENANT_ID", "value": "${{ vars.AZURE_TENANT_ID }}"},
-            {"name": "AZURE_REDIRECT_URI", "value": "https://${{ vars.AZURE_WEBAPP_NAME }}.azurewebsites.net/auth/callback"},
-            {"name": "ENVIRONMENT", "value": "${{ vars.ENVIRONMENT }}"},
-            {"name": "LOG_LEVEL", "value": "${{ vars.LOG_LEVEL }}"},
-            {"name": "ENABLE_PII_REDACTION", "value": "${{ vars.ENABLE_PII_REDACTION }}"},
-            {"name": "MCP_ALLOWED_ORIGINS", "value": "${{ vars.MCP_ALLOWED_ORIGINS }}"},
-            {"name": "REDIS_URL", "value": "${{ secrets.REDIS_URL }}"},
-            {"name": "USE_REDIS", "value": "${{ vars.USE_REDIS }}"},
-            {"name": "APPLICATION_INSIGHTS_KEY", "value": "${{ secrets.APPLICATION_INSIGHTS_KEY }}"},
-            {"name": "GIT_COMMIT_HASH", "value": "${{ github.sha }}"},
-            {"name": "WEBSITE_RUN_FROM_PACKAGE", "value": "1"},
-            {"name": "AZURE_WEBAPP_WARMUP_PATH", "value": "/health"},
-            {"name": "WEBSITES_CONTAINER_START_TIME_LIMIT", "value": "1800"},
-            {"name": "WEBSITES_ENABLE_APP_SERVICE_STORAGE", "value": "false"},
-            {"name": "WEBSITE_WEBDEPLOY_USE_SCM", "value": "false"},
-            {"name": "SCM_DO_BUILD_DURING_DEPLOYMENT", "value": "false"},
-            {"name": "ENABLE_ORYX_BUILD", "value": "false"}
-          ]
-        general-settings-json: |
-          {
-            "linuxFxVersion": "PYTHON|3.11"
-          }
+    # - name: Configure App Settings
+    #   uses: azure/appservice-settings@v1
+    #   with:
+    #     app-name: ${{ steps.get-webapp-name.outputs.WEBAPP_NAME }}
+    #     app-settings-json: |
+    #       [
+    #         {"name": "TELNYX_API_KEY", "value": "${{ secrets.TELNYX_API_KEY }}"},
+    #         {"name": "JWT_SECRET_KEY", "value": "${{ secrets.JWT_SECRET_KEY }}"},
+    #         {"name": "AZURE_CLIENT_ID", "value": "${{ secrets.AZURE_OAUTH_CLIENT_ID }}"},
+    #         {"name": "AZURE_TENANT_ID", "value": "${{ vars.AZURE_TENANT_ID }}"},
+    #         {"name": "AZURE_REDIRECT_URI", "value": "https://${{ vars.AZURE_WEBAPP_NAME }}.azurewebsites.net/auth/callback"},
+    #         {"name": "ENVIRONMENT", "value": "${{ vars.ENVIRONMENT }}"},
+    #         {"name": "LOG_LEVEL", "value": "${{ vars.LOG_LEVEL }}"},
+    #         {"name": "ENABLE_PII_REDACTION", "value": "${{ vars.ENABLE_PII_REDACTION }}"},
+    #         {"name": "MCP_ALLOWED_ORIGINS", "value": "${{ vars.MCP_ALLOWED_ORIGINS }}"},
+    #         {"name": "REDIS_URL", "value": "${{ secrets.REDIS_URL }}"},
+    #         {"name": "USE_REDIS", "value": "${{ vars.USE_REDIS }}"},
+    #         {"name": "APPLICATION_INSIGHTS_KEY", "value": "${{ secrets.APPLICATION_INSIGHTS_KEY }}"},
+    #         {"name": "WEBSITE_RUN_FROM_PACKAGE", "value": "1"},
+    #         {"name": "AZURE_WEBAPP_WARMUP_PATH", "value": "/health"},
+    #         {"name": "WEBSITES_CONTAINER_START_TIME_LIMIT", "value": "1800"},
+    #         {"name": "WEBSITES_ENABLE_APP_SERVICE_STORAGE", "value": "false"},
+    #         {"name": "WEBSITE_WEBDEPLOY_USE_SCM", "value": "false"},
+    #         {"name": "SCM_DO_BUILD_DURING_DEPLOYMENT", "value": "false"},
+    #         {"name": "ENABLE_ORYX_BUILD", "value": "false"}
+    #       ]
+    #     general-settings-json: |
+    #       {
+    #         "linuxFxVersion": "PYTHON|3.11"
+    #       }
 
     - name: Pre-deployment logging
       run: |
@@ -189,7 +200,7 @@ jobs:
         echo "App name: ${{ steps.get-webapp-name.outputs.WEBAPP_NAME }}"
         echo "Package: deployment-package.zip ($(du -h deployment-package.zip | cut -f1))"
         echo "Git commit: ${{ github.sha }}"
-        echo "App settings configured - no restart will occur during deployment"
+        echo "Deploying package only - app settings remain unchanged"
 
     - name: Deploy to Azure Web App
       id: deploy-to-webapp
