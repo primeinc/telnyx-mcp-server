@@ -14,8 +14,8 @@ resource configAuth 'Microsoft.Web/sites/config@2022-03-01' = {
   name: 'authsettingsV2'
   properties: {
     globalValidation: {
-      requireAuthentication: false
-      unauthenticatedClientAction: 'AllowAnonymous'
+      requireAuthentication: true
+      unauthenticatedClientAction: 'RedirectToLoginPage'
       redirectToProvider: 'azureactivedirectory'
       excludedPaths: [
         '/.well-known/oauth-protected-resource'
@@ -41,6 +41,24 @@ resource configAuth 'Microsoft.Web/sites/config@2022-03-01' = {
             allowedApplications: []
           }
         }
+      }
+      apple: {
+        enabled: false
+      }
+      facebook: {
+        enabled: false
+      }
+      gitHub: {
+        enabled: false
+      }
+      google: {
+        enabled: false
+      }
+      legacyMicrosoftAccount: {
+        enabled: false
+      }
+      twitter: {
+        enabled: false
       }
     }
     login: {
