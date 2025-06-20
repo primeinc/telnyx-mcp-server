@@ -1,0 +1,113 @@
+{
+  "id": "/subscriptions/98a49ff3-2204-48c2-9908-6d6c121ee372/resourceGroups/rg-telnyxmcp-staging-001/providers/Microsoft.Web/sites/app-telnyxmcp-staging-eus2-001/config/authsettingsV2",
+  "location": "East US 2",
+  "name": "authsettingsV2",
+  "properties": {
+    "clearInboundClaimsMapping": "false",
+    "globalValidation": {
+      "excludedPaths": [],
+      "requireAuthentication": false,
+      "unauthenticatedClientAction": "Return401"
+    },
+    "httpSettings": {
+      "forwardProxy": {
+        "convention": "NoProxy"
+      },
+      "requireHttps": true,
+      "routes": {
+        "apiPrefix": "/.auth"
+      }
+    },
+    "identityProviders": {
+      "apple": {
+        "enabled": true,
+        "login": {},
+        "registration": {}
+      },
+      "azureActiveDirectory": {
+        "enabled": true,
+        "login": {
+          "disableWWWAuthenticate": false
+        },
+        "registration": {
+          "clientId": "4d6b1965-15d3-4410-bef0-f5b659cb5585",
+          "clientSecretSettingName": "OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID",
+          "openIdIssuer": "https://login.microsoftonline.com/cffbf047-c1e9-4778-a916-93e4e5274641/v2.0"
+        },
+        "validation": {
+          "defaultAuthorizationPolicy": {
+            "allowedApplications": [],
+            "allowedPrincipals": {}
+          },
+          "jwtClaimChecks": {}
+        }
+      },
+      "facebook": {
+        "enabled": true,
+        "login": {},
+        "registration": {}
+      },
+      "gitHub": {
+        "enabled": true,
+        "login": {},
+        "registration": {}
+      },
+      "google": {
+        "enabled": true,
+        "login": {},
+        "registration": {},
+        "validation": {}
+      },
+      "legacyMicrosoftAccount": {
+        "enabled": true,
+        "login": {},
+        "registration": {},
+        "validation": {}
+      },
+      "twitter": {
+        "enabled": true,
+        "registration": {}
+      }
+    },
+    "login": {
+      "allowedExternalRedirectUrls": [],
+      "cookieExpiration": {
+        "convention": "FixedTime",
+        "timeToExpiration": "08:00:00"
+      },
+      "nonce": {
+        "nonceExpirationInterval": "00:05:00",
+        "validateNonce": true
+      },
+      "preserveUrlFragmentsForLogins": false,
+      "routes": {},
+      "tokenStore": {
+        "azureBlobStorage": {},
+        "enabled": true,
+        "fileSystem": {},
+        "tokenRefreshExtensionHours": 72.0
+      }
+    },
+    "platform": {
+      "enabled": true,
+      "runtimeVersion": "~1"
+    }
+  },
+  "tags": {
+    "BusinessUnit": "Engineering",
+    "Criticality": "High",
+    "DataClassification": "General",
+    "Environment": "staging",
+    "OpsCommitment": "Baseline only",
+    "OpsTeam": "Cloud operations",
+    "ProjectName": "Telnyx MCP Server",
+    "WorkloadName": "telnyxmcp",
+    "azd-env-name": "staging",
+    "azd-service-name": "web",
+    "costCenter": "Engineering-staging",
+    "env": "staging",
+    "hidden-link: /app-insights-resource-id": "/subscriptions/98a49ff3-2204-48c2-9908-6d6c121ee372/resourceGroups/rg-telnyxmcp-staging-001/providers/microsoft.insights/components/appi-telnyxmcp-staging-001",
+    "owner": "will.peters"
+  },
+  "type": "Microsoft.Web/sites/config"
+}

@@ -17,7 +17,16 @@ resource configAuth 'Microsoft.Web/sites/config@2022-03-01' = {
       requireAuthentication: false
       unauthenticatedClientAction: 'AllowAnonymous'
       redirectToProvider: 'azureactivedirectory'
-      excludedPaths: []
+      excludedPaths: [
+        '/.well-known/oauth-protected-resource'
+        '/.well-known/oauth-authorization-server'
+        '/.well-known/mcp-oauth-metadata'
+        '/.well-known/openid-configuration'
+        '/health'
+        '/docs'
+        '/openapi.json'
+        '/register'
+      ]
     }
     identityProviders: {
       azureActiveDirectory: {
