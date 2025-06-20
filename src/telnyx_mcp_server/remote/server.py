@@ -652,6 +652,7 @@ if not config.is_app_service:  # Only enable OAuth in local dev
 @app.get("/.well-known/oauth-protected-resource")
 async def oauth_protected_resource_metadata(request: Request):
     """OAuth 2.0 Protected Resource Metadata (RFC9728)."""
+    logger.info("OAuth protected resource metadata endpoint called")
     base_url = get_base_url_from_request(request)
 
     if config.is_app_service:
