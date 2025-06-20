@@ -772,10 +772,7 @@ async def mcp_oauth_metadata(request: Request):
                 "openid",
                 "profile",
                 "email",
-                "User.Read",
-                f"api://{client_id}/mcp:read",
-                f"api://{client_id}/mcp:write",
-                f"api://{client_id}/mcp:execute",
+                "offline_access",
             ],
             "grant_types_supported": ["authorization_code"],
             "response_types_supported": ["code"],
@@ -869,16 +866,7 @@ async def oauth_authorization_server_metadata(request: Request):
                 "openid",
                 "profile",
                 "email",
-                "User.Read",
-                f"api://{config.client_id}/mcp:read"
-                if config.client_id
-                else "mcp:read",
-                f"api://{config.client_id}/mcp:write"
-                if config.client_id
-                else "mcp:write",
-                f"api://{config.client_id}/mcp:execute"
-                if config.client_id
-                else "mcp:execute",
+                "offline_access",
             ],
             "token_endpoint_auth_methods_supported": [
                 "client_secret_post",
