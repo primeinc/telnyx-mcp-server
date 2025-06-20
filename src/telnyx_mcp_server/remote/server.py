@@ -1042,46 +1042,69 @@ if config.is_app_service:
         override_client_id = os.getenv(
             "OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID"
         )
-        if override_client_id:
-            # Use managed identity to create a JWT assertion for private_key_jwt authentication
-            from .auth.azure.managed_identity import create_jwt_assertion
+        use_jwt_assertion = (
+            os.getenv("USE_JWT_ASSERTION", "true").lower() == "true"
+        )
 
-            try:
+        if override_client_id:
+            if use_jwt_assertion:
+                # Approach 1: Use managed identity to create a JWT assertion for private_key_jwt authentication
+                from .auth.azure.managed_identity import create_jwt_assertion
+
+                try:
+                    logger.info(
+                        "Using managed identity for private_key_jwt authentication",
+                        managed_identity_client_id=override_client_id,
+                        app_client_id=config.client_id,
+                    )
+
+                    # Create JWT assertion
+                    jwt_assertion = await create_jwt_assertion(
+                        managed_identity_client_id=override_client_id,
+                        client_id=config.client_id,
+                        audience=f"https://login.microsoftonline.com/{config.tenant_id}/oauth2/v2.0/token",
+                    )
+
+                    # Add JWT assertion to the form data
+                    form_dict["client_assertion_type"] = (
+                        "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+                    )
+                    form_dict["client_assertion"] = jwt_assertion
+
+                    # Remove code_verifier if present when using client assertion
+                    if "code_verifier" in form_dict:
+                        del form_dict["code_verifier"]
+
+                    logger.info("Added JWT assertion to token request")
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to create JWT assertion: {e}", exc_info=True
+                    )
+                    return JSONResponse(
+                        status_code=500,
+                        content={
+                            "error": "server_error",
+                            "error_description": f"Failed to create client assertion: {str(e)}",
+                        },
+                    )
+            else:
+                # Approach 2: Use managed identity client ID as client secret
                 logger.info(
-                    "Using managed identity for private_key_jwt authentication",
+                    "Using managed identity client ID as client secret",
                     managed_identity_client_id=override_client_id,
                     app_client_id=config.client_id,
                 )
 
-                # Create JWT assertion
-                jwt_assertion = await create_jwt_assertion(
-                    managed_identity_client_id=override_client_id,
-                    client_id=config.client_id,
-                    audience=f"https://login.microsoftonline.com/{config.tenant_id}/oauth2/v2.0/token",
-                )
+                # Set the managed identity client ID as the client secret
+                form_dict["client_secret"] = override_client_id
 
-                # Add JWT assertion to the form data
-                form_dict["client_assertion_type"] = (
-                    "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
-                )
-                form_dict["client_assertion"] = jwt_assertion
-
-                # Remove code_verifier if present when using client assertion
+                # Remove code_verifier if present when using client secret
                 if "code_verifier" in form_dict:
                     del form_dict["code_verifier"]
 
-                logger.info("Added JWT assertion to token request")
-
-            except Exception as e:
-                logger.error(
-                    f"Failed to create JWT assertion: {e}", exc_info=True
-                )
-                return JSONResponse(
-                    status_code=500,
-                    content={
-                        "error": "server_error",
-                        "error_description": f"Failed to create client assertion: {str(e)}",
-                    },
+                logger.info(
+                    "Added managed identity client ID as client secret to token request"
                 )
 
         # Reconstruct body with all parameters
@@ -1168,30 +1191,49 @@ if config.is_app_service:
             redirect_uris=client_data.get("redirect_uris"),
         )
 
-        # Get the managed identity client ID that we use as the client secret
+        # Get the managed identity client ID that we use for authentication
         override_client_id = os.getenv(
             "OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID", ""
         )
+        use_jwt_assertion = (
+            os.getenv("USE_JWT_ASSERTION", "true").lower() == "true"
+        )
 
         # Return our pre-configured Azure AD app registration details
-        return {
+        response_data = {
             "client_id": config.client_id,
-            "client_secret": override_client_id,  # The managed identity client ID IS the secret!
             "redirect_uris": client_data.get("redirect_uris", []),
             "grant_types": ["authorization_code"],
             "response_types": ["code"],
-            "token_endpoint_auth_method": "client_secret_post",  # We send MI client ID as secret
             "application_type": "web",
             "client_name": client_data.get("client_name", "Telnyx MCP Server"),
             "client_uri": client_data.get("client_uri"),
             "scope": "openid profile email offline_access",
-            # Additional metadata to help Claude understand our setup
-            "token_endpoint_auth_methods_supported": [
-                "client_secret_post",
-                "none",
-            ],
             "code_challenge_methods_supported": ["S256"],
         }
+
+        if use_jwt_assertion:
+            # Using JWT assertion (private_key_jwt)
+            response_data["client_secret"] = (
+                ""  # No secret needed for JWT assertion
+            )
+            response_data["token_endpoint_auth_method"] = "private_key_jwt"
+            response_data["token_endpoint_auth_methods_supported"] = [
+                "private_key_jwt",
+                "none",
+            ]
+        else:
+            # Using managed identity client ID as secret
+            response_data["client_secret"] = (
+                override_client_id  # MI client ID as secret
+            )
+            response_data["token_endpoint_auth_method"] = "client_secret_post"
+            response_data["token_endpoint_auth_methods_supported"] = [
+                "client_secret_post",
+                "none",
+            ]
+
+        return response_data
 
 
 @app.get("/health")
