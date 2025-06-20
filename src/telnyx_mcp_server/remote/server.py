@@ -670,7 +670,7 @@ async def oauth_authorization_server_metadata(request: Request):
     base_url = get_base_url_from_request(request)
 
     if config.is_app_service:
-        # Azure Easy Auth - return Azure's OAuth endpoints
+        # Azure Easy Auth - return Azure's OAuth endpoints WITH client_id
         tenant_id = config.tenant_id or "common"
         return {
             "issuer": f"https://login.microsoftonline.com/{tenant_id}/v2.0",
@@ -679,6 +679,8 @@ async def oauth_authorization_server_metadata(request: Request):
             # No registration_endpoint - clients must be pre-registered in Azure AD
             "userinfo_endpoint": "https://graph.microsoft.com/oidc/userinfo",
             "jwks_uri": f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys",
+            # CRITICAL: Include client_id so Claude knows what to use
+            "client_id": config.client_id,
             "response_types_supported": ["code"],
             "grant_types_supported": ["authorization_code"],
             "subject_types_supported": ["public"],

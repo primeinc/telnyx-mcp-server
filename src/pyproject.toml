@@ -28,6 +28,7 @@ dependencies = [
     "azure-keyvault-certificates>=4.7.0",
     "azure-keyvault-secrets>=4.7.0",
     "cryptography==38.0.4",  # Pinned for Azure App Service GLIBC 2.31 compatibility
+    "msal>=1.24.0",  # Microsoft Authentication Library for proper OAuth flow
 ]
 
 [project.optional-dependencies]
