@@ -17,6 +17,9 @@ param displayName string = 'GitHub Actions Deploy'
 @description('Unique name for the GitHub Actions app')
 param appName string = 'github-actions-deploy'
 
+@description('Create FICs for environments')
+param createEnvironmentFICs bool = true
+
 // Constants
 var githubOIDCProvider = 'https://token.actions.githubusercontent.com'
 var microsoftEntraAudience = 'api://AzureADTokenExchange'
@@ -50,7 +53,7 @@ resource githubApp 'Microsoft.Graph/applications@v1.0' = {
 
   // Create federated identity credential for production environment
   resource prodEnvFIC 'federatedIdentityCredentials@v1.0' = {
-    name: '${githubApp.uniqueName}/github-environment-production'
+    name: '${githubApp.uniqueName}/github-environment'
     audiences: [
       microsoftEntraAudience
     ]
@@ -61,7 +64,7 @@ resource githubApp 'Microsoft.Graph/applications@v1.0' = {
 
   // Create federated identity credential for staging environment
   resource stagingEnvFIC 'federatedIdentityCredentials@v1.0' = {
-    name: '${githubApp.uniqueName}/github-environment-staging'
+    name: '${githubApp.uniqueName}/github-staging-environment'
     audiences: [
       microsoftEntraAudience
     ]

@@ -127,7 +127,7 @@ jobs:
       uses: azure/webapps-deploy@v3
       with:
         app-name: ${{ steps.get-webapp-name.outputs.WEBAPP_NAME }}
-        slot-name: ${{ needs.determine-environment.outputs.environment }}
+        package: ./src
 
     - name: Configure App Settings
       uses: azure/appservice-settings@v1
