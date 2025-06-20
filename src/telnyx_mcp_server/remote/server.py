@@ -636,6 +636,102 @@ if not config.is_app_service:  # Only enable OAuth in local dev
     # TODO: Add /authorize, /token, /callback endpoints for local OAuth flow
 
 
+# OAuth proxy endpoints for Azure AD - handle OAuth flow for Claude
+@app.get("/authorize")
+async def authorize_proxy(request: Request):
+    """Proxy authorization endpoint that redirects to Azure AD with our client_id."""
+    if not config.is_app_service:
+        # Local OAuth flow - not implemented yet
+        return JSONResponse(
+            status_code=501,
+            content={
+                "error": "not_implemented",
+                "error_description": "Local OAuth not implemented",
+            },
+        )
+
+    # In Azure App Service, redirect to Azure AD with our client_id
+    tenant_id = config.tenant_id or "common"
+    client_id = config.client_id or os.getenv("AZURE_CLIENT_ID")
+
+    if not client_id:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "server_error",
+                "error_description": "OAuth client_id not configured",
+            },
+        )
+
+    # Get query parameters from Claude
+    params = dict(request.query_params)
+
+    # Ensure our client_id is used
+    params["client_id"] = client_id
+
+    # Build Azure AD authorization URL
+    azure_auth_url = (
+        f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize"
+    )
+    query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+    redirect_url = f"{azure_auth_url}?{query_string}"
+
+    logger.info(f"Redirecting to Azure AD: {redirect_url}")
+
+    # Redirect to Azure AD
+    return Response(status_code=302, headers={"Location": redirect_url})
+
+
+@app.post("/token")
+async def token_proxy(request: Request):
+    """Proxy token endpoint that forwards to Azure AD."""
+    if not config.is_app_service:
+        # Local OAuth flow - not implemented yet
+        return JSONResponse(
+            status_code=501,
+            content={
+                "error": "not_implemented",
+                "error_description": "Local OAuth not implemented",
+            },
+        )
+
+    # In Azure App Service, forward to Azure AD token endpoint
+    tenant_id = config.tenant_id or "common"
+    client_id = config.client_id or os.getenv("AZURE_CLIENT_ID")
+
+    if not client_id:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "server_error",
+                "error_description": "OAuth client_id not configured",
+            },
+        )
+
+    # Get form data from Claude
+    form_data = await request.form()
+    data = dict(form_data)
+
+    # Ensure our client_id is used
+    data["client_id"] = client_id
+
+    # Forward to Azure AD token endpoint
+    import httpx
+
+    async with httpx.AsyncClient() as client:
+        azure_token_url = (
+            f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+        )
+        response = await client.post(azure_token_url, data=data)
+
+        # Return Azure AD response to Claude
+        return Response(
+            content=response.text,
+            status_code=response.status_code,
+            headers={"Content-Type": "application/json"},
+        )
+
+
 # MCP OAuth metadata endpoint - Claude looks for this
 @app.get("/.well-known/mcp-oauth-metadata")
 async def mcp_oauth_metadata(request: Request):
@@ -665,11 +761,13 @@ async def mcp_oauth_metadata(request: Request):
                 },
             )
 
+        # Return metadata that points to our proxy endpoints
+        # We'll handle the Azure AD client_id injection in our /authorize endpoint
         return {
-            "issuer": f"https://login.microsoftonline.com/{tenant_id}/v2.0",
-            "authorization_endpoint": f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize",
-            "token_endpoint": f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
-            "client_id": client_id,  # CRITICAL: Claude needs this!
+            "issuer": base_url,
+            "authorization_endpoint": f"{base_url}/authorize",
+            "token_endpoint": f"{base_url}/token",
+            # Don't include client_id here - Claude should not send one
             "scopes_supported": [
                 "openid",
                 "profile",
