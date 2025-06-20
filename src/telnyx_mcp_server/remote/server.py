@@ -676,7 +676,7 @@ async def oauth_authorization_server_metadata(request: Request):
             "issuer": f"https://login.microsoftonline.com/{tenant_id}/v2.0",
             "authorization_endpoint": f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize",
             "token_endpoint": f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
-            "registration_endpoint": f"{base_url}/register",
+            # No registration_endpoint - clients must be pre-registered in Azure AD
             "userinfo_endpoint": "https://graph.microsoft.com/oidc/userinfo",
             "jwks_uri": f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys",
             "response_types_supported": ["code"],
@@ -745,44 +745,47 @@ async def oauth_authorization_server_metadata(request: Request):
         }
 
 
-@app.post("/register", status_code=201)
-async def register(request: Request):
-    """OAuth 2.0 Dynamic Client Registration (RFC 7591)."""
-    try:
-        client_data = await request.json()
-    except:
-        return Response(
-            content=json.dumps(
-                {
-                    "error": "invalid_request",
-                    "error_description": "Invalid JSON in request body",
-                }
-            ),
-            status_code=400,
-            media_type="application/json",
+# OAuth endpoints ONLY for local development / Claude Desktop
+if not config.is_app_service:  # Only enable OAuth in local dev
+
+    @app.post("/register", status_code=201)
+    async def register(request: Request):
+        """OAuth 2.0 Dynamic Client Registration (RFC 7591) - LOCAL DEV ONLY."""
+        try:
+            client_data = await request.json()
+        except:
+            return Response(
+                content=json.dumps(
+                    {
+                        "error": "invalid_request",
+                        "error_description": "Invalid JSON in request body",
+                    }
+                ),
+                status_code=400,
+                media_type="application/json",
+            )
+
+        # Generate a client_id for the client
+        import secrets
+
+        client_id = f"mcp_{secrets.token_urlsafe(16)}"
+
+        logger.info(
+            f"Registered new OAuth client: {client_id}, name={client_data.get('client_name')}, redirect_uris={client_data.get('redirect_uris')}"
         )
 
-    # Generate a client_id for the client
-    import secrets
-
-    client_id = f"mcp_{secrets.token_urlsafe(16)}"
-
-    logger.info(
-        f"Registered new OAuth client: {client_id}, name={client_data.get('client_name')}, redirect_uris={client_data.get('redirect_uris')}"
-    )
-
-    return {
-        "client_id": client_id,
-        "client_secret": "",  # Public client
-        "redirect_uris": client_data.get("redirect_uris", []),
-        "grant_types": ["authorization_code"],
-        "response_types": ["code"],
-        "token_endpoint_auth_method": "none",
-        "application_type": "web",
-        "client_name": client_data.get("client_name"),
-        "client_uri": client_data.get("client_uri"),
-        "scope": client_data.get("scope", "openid profile email"),
-    }
+        return {
+            "client_id": client_id,
+            "client_secret": "",  # Public client
+            "redirect_uris": client_data.get("redirect_uris", []),
+            "grant_types": ["authorization_code"],
+            "response_types": ["code"],
+            "token_endpoint_auth_method": "none",
+            "application_type": "web",
+            "client_name": client_data.get("client_name"),
+            "client_uri": client_data.get("client_uri"),
+            "scope": client_data.get("scope", "openid profile email"),
+        }
 
 
 @app.get("/health")
