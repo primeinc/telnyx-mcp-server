@@ -636,6 +636,76 @@ if not config.is_app_service:  # Only enable OAuth in local dev
     # TODO: Add /authorize, /token, /callback endpoints for local OAuth flow
 
 
+# MCP OAuth metadata endpoint - Claude looks for this
+@app.get("/.well-known/mcp-oauth-metadata")
+async def mcp_oauth_metadata(request: Request):
+    """MCP OAuth metadata for Claude to discover our OAuth configuration."""
+    base_url = get_base_url_from_request(request)
+
+    # Debug logging
+    logger.info(
+        "MCP OAuth metadata requested",
+        is_app_service=config.is_app_service,
+        client_id=config.client_id,
+        tenant_id=config.tenant_id,
+    )
+
+    if config.is_app_service:
+        # Azure AD configuration - include all necessary fields for Claude
+        tenant_id = config.tenant_id or "common"
+        client_id = config.client_id or os.getenv("AZURE_CLIENT_ID")
+
+        if not client_id:
+            logger.error("No client_id available for Azure AD configuration")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": "server_error",
+                    "error_description": "OAuth client_id not configured",
+                },
+            )
+
+        return {
+            "issuer": f"https://login.microsoftonline.com/{tenant_id}/v2.0",
+            "authorization_endpoint": f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize",
+            "token_endpoint": f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+            "client_id": client_id,  # CRITICAL: Claude needs this!
+            "scopes_supported": [
+                "openid",
+                "profile",
+                "email",
+                "User.Read",
+                f"api://{client_id}/mcp:read",
+                f"api://{client_id}/mcp:write",
+                f"api://{client_id}/mcp:execute",
+            ],
+            "grant_types_supported": ["authorization_code"],
+            "response_types_supported": ["code"],
+            "code_challenge_methods_supported": ["S256"],
+            "token_endpoint_auth_methods_supported": ["none"],
+        }
+    else:
+        # Local OAuth configuration
+        return {
+            "issuer": base_url,
+            "authorization_endpoint": f"{base_url}/authorize",
+            "token_endpoint": f"{base_url}/token",
+            "registration_endpoint": f"{base_url}/register",
+            "scopes_supported": [
+                "openid",
+                "profile",
+                "email",
+                "mcp:read",
+                "mcp:write",
+                "mcp:execute",
+            ],
+            "grant_types_supported": ["authorization_code"],
+            "response_types_supported": ["code"],
+            "code_challenge_methods_supported": ["S256"],
+            "token_endpoint_auth_methods_supported": ["none"],
+        }
+
+
 # OAuth discovery endpoints for both local dev and Azure Easy Auth
 @app.get("/.well-known/oauth-protected-resource")
 async def oauth_protected_resource_metadata(request: Request):
@@ -661,6 +731,8 @@ async def oauth_protected_resource_metadata(request: Request):
         "authorization_servers": authorization_servers,
         "bearer_methods_supported": ["header"],
         "resource_signing_alg_values_supported": ["RS256"],
+        # Add client configuration for Azure AD
+        "client_id": config.client_id if config.is_app_service else None,
     }
 
 
@@ -668,6 +740,15 @@ async def oauth_protected_resource_metadata(request: Request):
 async def oauth_authorization_server_metadata(request: Request):
     """OAuth 2.0 Authorization Server Metadata (RFC8414)."""
     base_url = get_base_url_from_request(request)
+
+    # Debug logging
+    logger.info(
+        "OAuth authorization server metadata requested",
+        is_app_service=config.is_app_service,
+        client_id=config.client_id,
+        tenant_id=config.tenant_id,
+        client_id_from_env=os.getenv("AZURE_CLIENT_ID"),
+    )
 
     if config.is_app_service:
         # Azure Easy Auth - return Azure's OAuth endpoints WITH client_id
