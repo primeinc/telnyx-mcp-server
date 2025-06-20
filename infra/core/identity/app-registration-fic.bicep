@@ -64,6 +64,10 @@ resource clientApp 'Microsoft.Graph/applications@v1.0' = {
     ]
     implicitGrantSettings: { enableIdTokenIssuance: true }
   }
+  publicClient: {
+    redirectUris: []
+  }
+  isFallbackPublicClient: true
   requiredResourceAccess: [
     {
       resourceAppId: msGraphAppId
