@@ -1810,9 +1810,6 @@ async def mcp_endpoint(
         method = ""
         if isinstance(message, dict):
             method = message.get("method", "")
-            # Only initialize and its notification are allowed without auth
-            if method in ["initialize", "notifications/initialized"]:
-                requires_auth = False
 
         # If auth is required, check authentication
         if requires_auth:
