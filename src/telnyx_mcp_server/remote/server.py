@@ -174,6 +174,9 @@ class TelnyxMCPServer:
                         "authorizationServers": [
                             base_url  # Issuer URI
                         ],
+                        "dynamicClientRegistration": {
+                            "endpoint": f"{base_url}/register"
+                        },
                     },
                 },
                 "serverInfo": {
