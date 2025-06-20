@@ -1276,12 +1276,15 @@ async def oauth_callback_debug(request: Request):
     )
 
     # Prepare token exchange request
+    # Force HTTPS for Azure App Service
+    current_url = str(request.url).split("?")[0]
+    if config.is_app_service and current_url.startswith("http://"):
+        current_url = current_url.replace("http://", "https://", 1)
+
     token_request = {
         "grant_type": "authorization_code",
         "code": code,
-        "redirect_uri": str(request.url).split("?")[
-            0
-        ],  # Current URL without query params
+        "redirect_uri": current_url,  # Current URL without query params
         "client_id": config.client_id,
     }
 

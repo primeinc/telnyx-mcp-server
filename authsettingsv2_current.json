@@ -15,7 +15,8 @@
         "/openapi.json",
         "/register",
         "/authorize",
-        "/token"
+        "/token",
+        "/oauth/callback/debug"
       ],
       "redirectToProvider": "azureactivedirectory",
       "requireAuthentication": true,
