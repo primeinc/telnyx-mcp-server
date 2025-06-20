@@ -35,7 +35,7 @@ jobs:
             echo "pii-redaction=true" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
             echo "environment=staging" >> $GITHUB_OUTPUT
-            echo "log-level=INFO" >> $GITHUB_OUTPUT
+            echo "log-level=DEBUG" >> $GITHUB_OUTPUT
             echo "pii-redaction=true" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
             echo "environment=development" >> $GITHUB_OUTPUT
