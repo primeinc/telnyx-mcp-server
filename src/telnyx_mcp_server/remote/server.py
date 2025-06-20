@@ -25,10 +25,7 @@ from sse_starlette.sse import EventSourceResponse
 from ..mcp import mcp
 
 # Import authentication
-from .auth import (
-    AuthService,
-    get_current_user,
-)
+from .auth import AuthService
 from .auth_store import auth_store
 from .schema_fixer import fix_tool_schema, validate_tool_arguments
 
@@ -162,7 +159,7 @@ class TelnyxMCPServer:
                     "auth": {
                         "oauth2": True,
                         "authorizationServers": [
-                            f"{base_url}/.well-known/oauth-authorization-server"
+                            base_url  # Issuer URI only, not the metadata URL
                         ],
                     },
                 },
@@ -1675,9 +1672,52 @@ async def mcp_endpoint(
 @app.get("/mcp")
 async def mcp_sse_stream(
     request: Request,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(
+        HTTPBearer(auto_error=False)
+    ),
 ):
     """GET endpoint for server-initiated SSE stream."""
+    # Check authentication first, before any logging that uses current_user
+    current_user = None
+    try:
+        # First try Built-in Auth header
+        current_user = AuthService.extract_user_from_header(request)
+        if not current_user and credentials:
+            # Fall back to JWT token from MSAL
+            token = credentials.credentials
+            current_user = AuthService.decode_jwt_token(token)
+
+        if not current_user:
+            # Return 401 with proper headers and empty body
+            base_url = get_base_url_from_request(request)
+            headers = {
+                "WWW-Authenticate": f'Bearer resource_metadata="{base_url}/.well-known/oauth-protected-resource"',
+                "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth2-authorization-server"',
+                "Cache-Control": "no-store",
+                "Access-Control-Expose-Headers": "WWW-Authenticate",  # For CORS
+            }
+
+            return Response(
+                content="",  # Empty body - critical for MCP clients
+                status_code=401,
+                headers=headers,
+            )
+    except Exception:
+        # Any auth error should result in proper 401
+        base_url = get_base_url_from_request(request)
+        headers = {
+            "WWW-Authenticate": f'Bearer resource_metadata="{base_url}/.well-known/oauth-protected-resource"',
+            "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth2-authorization-server"',
+            "Cache-Control": "no-store",
+            "Access-Control-Expose-Headers": "WWW-Authenticate",  # For CORS
+        }
+
+        return Response(
+            content="",  # Empty body - critical for MCP clients
+            status_code=401,
+            headers=headers,
+        )
+
     # Comprehensive logging
     logger.info(
         "MCP GET endpoint called",
@@ -1693,23 +1733,6 @@ async def mcp_sse_stream(
     )
     # Log all headers separately for debugging
     logger.debug(f"Request headers: {dict(request.headers)}")
-
-    # SSE streams also require authentication
-    if not current_user:
-        base_url = get_base_url_from_request(request)
-        headers = {
-            "WWW-Authenticate": f'Bearer resource_metadata="{base_url}/.well-known/oauth-protected-resource"',
-            "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth2-authorization-server"',
-            "Cache-Control": "no-store",
-            "Access-Control-Expose-Headers": "WWW-Authenticate",  # For CORS
-        }
-
-        # Return empty 401 - no JSON-RPC error in body
-        return Response(
-            content="",  # Empty body - critical for MCP clients
-            status_code=401,
-            headers=headers,
-        )
 
     # Get session ID if provided
     session_id = request.headers.get("mcp-session-id")

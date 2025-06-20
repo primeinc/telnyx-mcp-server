@@ -8,8 +8,8 @@ from typing import Any, Dict, Optional
 import urllib.parse
 
 from dotenv import load_dotenv
-from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import HTTPException, Request, status
+from fastapi.security import HTTPBearer
 import jwt
 
 # Load environment variables
@@ -186,35 +186,3 @@ class AuthService:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=f"Invalid token: {str(e)}",
             )
-
-
-async def get_current_user(
-    request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(
-        HTTPBearer(auto_error=False)
-    ),
-) -> Dict[str, Any]:
-    """Get current user from Built-in Auth header or JWT token.
-
-    When using Azure App Service Built-in Authentication:
-    - The X-MS-CLIENT-PRINCIPAL header is set by Easy Auth when using Built-in Auth flow
-    - OR clients can send JWT tokens obtained from MSAL in Authorization header
-    - ALL requests must be authenticated
-    """
-    # First try Built-in Auth header (when using /.auth/login/aad flow)
-    user_data = AuthService.extract_user_from_header(request)
-    if user_data:
-        return user_data
-
-    # Fall back to JWT token from MSAL (for direct API access)
-    if credentials:
-        token = credentials.credentials
-        user_data = AuthService.decode_jwt_token(token)
-        return user_data
-
-    # No authentication found
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Authentication required",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
