@@ -805,10 +805,24 @@ async def health_check():
     }
 
     # Check Easy Auth configuration
+    import os
+
     health_data["auth"] = {
         "easy_auth_available": config.is_easy_auth_available,
         "environment": config.environment,
         "auth_enforced": config.auth_enforce,
+        "debug": {
+            "auth_enabled_field": config.auth_enabled,
+            "is_app_service_field": config.is_app_service,
+            "website_auth_enabled_env": os.getenv(
+                "WEBSITE_AUTH_ENABLED", "NOT_SET"
+            ),
+            "website_instance_id_env": os.getenv(
+                "WEBSITE_INSTANCE_ID", "NOT_SET"
+            ),
+            "website_instance_id_bool": bool(os.getenv("WEBSITE_INSTANCE_ID")),
+            "logic_check": f"is_app_service={config.is_app_service} AND auth_enabled={config.auth_enabled} = {config.is_app_service and config.auth_enabled}",
+        },
     }
 
     # Check MCP tools initialization
