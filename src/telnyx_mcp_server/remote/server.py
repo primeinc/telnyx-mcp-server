@@ -1726,10 +1726,15 @@ async def mcp_endpoint(
                         detail="Authentication required",
                     )
             except HTTPException:
-                # According to MCP spec and RFC 9728, return ONLY HTTP headers, no body
+                # According to MCP spec and RFC 6750, return proper OAuth challenge header
                 headers = {
-                    "WWW-Authenticate": f'Bearer resource_metadata="{base_url}/.well-known/oauth-protected-resource"',
-                    "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth2-authorization-server"',
+                    "WWW-Authenticate": (
+                        f"Bearer "
+                        f'authorization_uri="{base_url}/authorize", '
+                        f'token_uri="{base_url}/token", '
+                        f'registration_uri="{base_url}/register", '
+                        f'scope="openid profile email mcp:read mcp:write mcp:execute"'
+                    ),
                     "Cache-Control": "no-store",
                     "Access-Control-Expose-Headers": "WWW-Authenticate",  # For CORS
                 }
@@ -1878,11 +1883,16 @@ async def mcp_sse_stream(
             current_user = AuthService.decode_jwt_token(token)
 
         if not current_user:
-            # Return 401 with proper headers and empty body
+            # Return 401 with proper OAuth challenge header
             base_url = get_base_url_from_request(request)
             headers = {
-                "WWW-Authenticate": f'Bearer resource_metadata="{base_url}/.well-known/oauth-protected-resource"',
-                "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth2-authorization-server"',
+                "WWW-Authenticate": (
+                    f"Bearer "
+                    f'authorization_uri="{base_url}/authorize", '
+                    f'token_uri="{base_url}/token", '
+                    f'registration_uri="{base_url}/register", '
+                    f'scope="openid profile email mcp:read mcp:write mcp:execute"'
+                ),
                 "Cache-Control": "no-store",
                 "Access-Control-Expose-Headers": "WWW-Authenticate",  # For CORS
             }
@@ -1893,11 +1903,16 @@ async def mcp_sse_stream(
                 headers=headers,
             )
     except Exception:
-        # Any auth error should result in proper 401
+        # Any auth error should result in proper OAuth challenge
         base_url = get_base_url_from_request(request)
         headers = {
-            "WWW-Authenticate": f'Bearer resource_metadata="{base_url}/.well-known/oauth-protected-resource"',
-            "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth2-authorization-server"',
+            "WWW-Authenticate": (
+                f"Bearer "
+                f'authorization_uri="{base_url}/authorize", '
+                f'token_uri="{base_url}/token", '
+                f'registration_uri="{base_url}/register", '
+                f'scope="openid profile email mcp:read mcp:write mcp:execute"'
+            ),
             "Cache-Control": "no-store",
             "Access-Control-Expose-Headers": "WWW-Authenticate",  # For CORS
         }
