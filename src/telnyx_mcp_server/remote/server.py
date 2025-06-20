@@ -761,7 +761,7 @@ async def oauth_metadata(request: Request):
         # Remove jwks_uri to avoid confusion since we don't publish our symmetric key
         # "jwks_uri": f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/discovery/v2.0/keys" if AZURE_TENANT_ID else None,
         "response_types_supported": ["code"],
-        "grant_types_supported": ["authorization_code"],
+        "grant_types_supported": ["authorization_code", "client_credentials"],
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["HS256"],
         "scopes_supported": [
@@ -822,7 +822,7 @@ async def mcp_oauth_metadata(request: Request):
         "authorization_endpoint": f"{base_url}/authorize",
         "token_endpoint": f"{base_url}/token",
         "response_types_supported": ["code"],
-        "grant_types_supported": ["authorization_code"],
+        "grant_types_supported": ["authorization_code", "client_credentials"],
         "scopes_supported": [
             "openid",
             "profile",
@@ -871,7 +871,7 @@ async def openid_configuration(request: Request):
         # Remove jwks_uri to avoid confusion since we don't publish our symmetric key
         # "jwks_uri": f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/discovery/v2.0/keys" if AZURE_TENANT_ID else None,
         "response_types_supported": ["code"],
-        "grant_types_supported": ["authorization_code"],
+        "grant_types_supported": ["authorization_code", "client_credentials"],
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["HS256"],
         "scopes_supported": [
@@ -1071,143 +1071,234 @@ async def token(request: Request):
     logger.info(f"code_verifier present: {code_verifier is not None}")
     logger.info("=" * 50)
 
-    # Validate grant type
-    if grant_type != "authorization_code":
-        return Response(
-            content=json.dumps(
-                {
-                    "error": "unsupported_grant_type",
-                    "error_description": "Only authorization_code grant type is supported",
-                }
-            ),
-            status_code=400,
-            media_type="application/json",
+    # Handle different grant types
+    if grant_type == "client_credentials":
+        # Client credentials flow for automated clients like Claude
+        client_secret = form_data.get("client_secret")
+        scope = form_data.get(
+            "scope", "openid profile email mcp:read mcp:write mcp:execute"
         )
 
-    if not code:
-        return Response(
-            content=json.dumps(
-                {
-                    "error": "invalid_request",
-                    "error_description": "Missing authorization code",
-                }
-            ),
-            status_code=400,
-            media_type="application/json",
-        )
-
-    try:
-        # Retrieve the MCP auth code from our store
-        auth_code_data = auth_store.get_auth_code(code)
-
-        if not auth_code_data:
-            logger.warning(f"Invalid or expired MCP auth code: {code[:8]}...")
+        # Validate client credentials
+        if not client_id:
             return Response(
                 content=json.dumps(
                     {
-                        "error": "invalid_grant",
-                        "error_description": "Authorization code is invalid or expired",
+                        "error": "invalid_request",
+                        "error_description": "Missing client_id",
                     }
                 ),
                 status_code=400,
                 media_type="application/json",
             )
 
-        # Mark the code as used to prevent replay attacks
-        auth_store.mark_code_used(code)
+        # Look up the registered client
+        client = auth_store.get_client(client_id)
+        if not client:
+            logger.error(f"Unknown client_id in token request: {client_id}")
+            return Response(
+                content=json.dumps(
+                    {
+                        "error": "invalid_client",
+                        "error_description": "Unknown client_id",
+                    }
+                ),
+                status_code=401,
+                media_type="application/json",
+            )
 
-        # PKCE validation is MANDATORY for public clients (RFC 7636)
-        if auth_code_data.pkce_challenge:
-            if not code_verifier:
+        # For public clients (no secret), just validate client_id exists
+        # For confidential clients, validate the secret
+        if hasattr(client, "client_secret") and client.client_secret:
+            if not client_secret or client_secret != client.client_secret:
                 logger.error(
-                    "PKCE code_verifier missing for code with challenge"
+                    f"Invalid client_secret for client_id: {client_id}"
                 )
                 return Response(
                     content=json.dumps(
                         {
-                            "error": "invalid_request",
-                            "error_description": "code_verifier is required for PKCE",
+                            "error": "invalid_client",
+                            "error_description": "Invalid client credentials",
                         }
                     ),
-                    status_code=400,
+                    status_code=401,
                     media_type="application/json",
                 )
 
-            # Validate PKCE - compute challenge from verifier and compare
-            if auth_code_data.pkce_method == "S256":
-                # SHA256 hash the verifier and base64url encode
-                verifier_bytes = code_verifier.encode("ascii")
-                challenge_bytes = hashlib.sha256(verifier_bytes).digest()
-                computed_challenge = (
-                    base64.urlsafe_b64encode(challenge_bytes)
-                    .decode("ascii")
-                    .rstrip("=")
-                )
-            else:
-                # Plain method not allowed for security
-                logger.error(
-                    f"Unsupported PKCE method: {auth_code_data.pkce_method}"
-                )
-                return Response(
-                    content=json.dumps(
-                        {
-                            "error": "invalid_request",
-                            "error_description": "Only S256 code_challenge_method is supported",
-                        }
-                    ),
-                    status_code=400,
-                    media_type="application/json",
-                )
-
-            # Compare with stored challenge
-            if computed_challenge != auth_code_data.pkce_challenge:
-                logger.error("PKCE verification failed - challenge mismatch")
-                return Response(
-                    content=json.dumps(
-                        {
-                            "error": "invalid_grant",
-                            "error_description": "PKCE verification failed",
-                        }
-                    ),
-                    status_code=400,
-                    media_type="application/json",
-                )
-
-        # Create JWT token using the stored user info and Azure token
-        user_info = auth_code_data.user_info
-        logger.info(f"Creating JWT for user: {user_info}")
+        # Create a service account token
+        service_account_info = {
+            "id": f"service-{client_id}",
+            "name": client.client_name or "Service Account",
+            "email": f"{client_id}@service.local",
+            "provider": "client_credentials",
+            "userRoles": ["service"],
+            "claims": {
+                "client_id": client_id,
+                "grant_type": "client_credentials",
+            },
+        }
 
         # Use the resource parameter as audience if provided (RFC 8707)
-        audience = resource or getattr(auth_code_data, "resource", None)
-        jwt_token = AuthService.create_jwt_token(user_info, audience=audience)
-
-        logger.info(f"JWT token created successfully")
-        logger.info(f"Token (first 50 chars): {jwt_token[:50]}...")
-        logger.info(
-            f"Issued JWT token for user: {user_info.get('mail', user_info.get('userPrincipalName'))}"
+        audience = resource
+        jwt_token = AuthService.create_jwt_token(
+            service_account_info, audience=audience
         )
 
-        # Get base URL for MCP endpoint discovery
-        base_url = get_base_url_from_request(request)
+        logger.info(f"Issued client_credentials token for client: {client_id}")
 
         # Standard OAuth token response
         return {
             "access_token": jwt_token,
             "token_type": "Bearer",
             "expires_in": 86400,  # 24 hours in seconds
-            "scope": "openid profile email mcp:read mcp:write mcp:execute",
+            "scope": scope,
         }
 
-    except Exception as e:
-        logger.error(f"Token exchange error: {e}", exc_info=True)
+    elif grant_type == "authorization_code":
+        # Authorization code flow (existing implementation)
+        if not code:
+            return Response(
+                content=json.dumps(
+                    {
+                        "error": "invalid_request",
+                        "error_description": "Missing authorization code",
+                    }
+                ),
+                status_code=400,
+                media_type="application/json",
+            )
+
+        try:
+            # Retrieve the MCP auth code from our store
+            auth_code_data = auth_store.get_auth_code(code)
+
+            if not auth_code_data:
+                logger.warning(
+                    f"Invalid or expired MCP auth code: {code[:8]}..."
+                )
+                return Response(
+                    content=json.dumps(
+                        {
+                            "error": "invalid_grant",
+                            "error_description": "Authorization code is invalid or expired",
+                        }
+                    ),
+                    status_code=400,
+                    media_type="application/json",
+                )
+
+            # Mark the code as used to prevent replay attacks
+            auth_store.mark_code_used(code)
+
+            # PKCE validation is MANDATORY for public clients (RFC 7636)
+            if auth_code_data.pkce_challenge:
+                if not code_verifier:
+                    logger.error(
+                        "PKCE code_verifier missing for code with challenge"
+                    )
+                    return Response(
+                        content=json.dumps(
+                            {
+                                "error": "invalid_request",
+                                "error_description": "code_verifier is required for PKCE",
+                            }
+                        ),
+                        status_code=400,
+                        media_type="application/json",
+                    )
+
+                # Validate PKCE - compute challenge from verifier and compare
+                if auth_code_data.pkce_method == "S256":
+                    # SHA256 hash the verifier and base64url encode
+                    verifier_bytes = code_verifier.encode("ascii")
+                    challenge_bytes = hashlib.sha256(verifier_bytes).digest()
+                    computed_challenge = (
+                        base64.urlsafe_b64encode(challenge_bytes)
+                        .decode("ascii")
+                        .rstrip("=")
+                    )
+                else:
+                    # Plain method not allowed for security
+                    logger.error(
+                        f"Unsupported PKCE method: {auth_code_data.pkce_method}"
+                    )
+                    return Response(
+                        content=json.dumps(
+                            {
+                                "error": "invalid_request",
+                                "error_description": "Only S256 code_challenge_method is supported",
+                            }
+                        ),
+                        status_code=400,
+                        media_type="application/json",
+                    )
+
+                # Compare with stored challenge
+                if computed_challenge != auth_code_data.pkce_challenge:
+                    logger.error(
+                        "PKCE verification failed - challenge mismatch"
+                    )
+                    return Response(
+                        content=json.dumps(
+                            {
+                                "error": "invalid_grant",
+                                "error_description": "PKCE verification failed",
+                            }
+                        ),
+                        status_code=400,
+                        media_type="application/json",
+                    )
+
+            # Create JWT token using the stored user info and Azure token
+            user_info = auth_code_data.user_info
+            logger.info(f"Creating JWT for user: {user_info}")
+
+            # Use the resource parameter as audience if provided (RFC 8707)
+            audience = resource or getattr(auth_code_data, "resource", None)
+            jwt_token = AuthService.create_jwt_token(
+                user_info, audience=audience
+            )
+
+            logger.info(f"JWT token created successfully")
+            logger.info(f"Token (first 50 chars): {jwt_token[:50]}...")
+            logger.info(
+                f"Issued JWT token for user: {user_info.get('mail', user_info.get('userPrincipalName'))}"
+            )
+
+            # Get base URL for MCP endpoint discovery
+            base_url = get_base_url_from_request(request)
+
+            # Standard OAuth token response
+            return {
+                "access_token": jwt_token,
+                "token_type": "Bearer",
+                "expires_in": 86400,  # 24 hours in seconds
+                "scope": "openid profile email mcp:read mcp:write mcp:execute",
+            }
+
+        except Exception as e:
+            logger.error(f"Token exchange error: {e}", exc_info=True)
+            return Response(
+                content=json.dumps(
+                    {
+                        "error": "server_error",
+                        "error_description": "An internal error occurred",
+                    }
+                ),
+                status_code=500,
+                media_type="application/json",
+            )
+
+    else:
+        # Unsupported grant type
         return Response(
             content=json.dumps(
                 {
-                    "error": "server_error",
-                    "error_description": "An internal error occurred",
+                    "error": "unsupported_grant_type",
+                    "error_description": f"Grant type '{grant_type}' is not supported. Supported types: authorization_code, client_credentials",
                 }
             ),
-            status_code=500,
+            status_code=400,
             media_type="application/json",
         )
 

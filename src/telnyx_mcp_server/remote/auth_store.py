@@ -331,10 +331,18 @@ class AuthStore:
         # Generate a unique client_id
         client_id = f"mcp_{secrets.token_urlsafe(16)}"
 
+        # Generate client_secret for confidential clients
+        client_secret = ""
+        if token_endpoint_auth_method in [
+            "client_secret_post",
+            "client_secret_basic",
+        ]:
+            client_secret = secrets.token_urlsafe(32)
+
         # Create the registration
         registration = ClientRegistration(
             client_id=client_id,
-            client_secret="",  # Always empty for public clients
+            client_secret=client_secret,
             redirect_uris=redirect_uris,
             token_endpoint_auth_method=token_endpoint_auth_method,
             grant_types=grant_types or ["authorization_code"],
@@ -352,7 +360,11 @@ class AuthStore:
             software_version=software_version,
             created_at=time.time(),
             client_id_issued_at=int(time.time()),
-            client_secret_expires_at=0,  # No expiration for public clients
+            client_secret_expires_at=0
+            if not client_secret
+            else int(
+                time.time() + 31536000
+            ),  # 1 year for confidential clients
         )
 
         # Store the registration
