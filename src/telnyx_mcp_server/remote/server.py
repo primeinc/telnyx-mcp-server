@@ -975,6 +975,179 @@ if not config.is_app_service:  # Only enable OAuth in local dev
         }
 
 
+# OAuth proxy endpoints for Azure AD when running in App Service
+if config.is_app_service:
+    from urllib.parse import urlencode
+
+    import httpx
+
+    @app.get("/authorize")
+    async def authorize_proxy(request: Request):
+        """Proxy authorization endpoint that redirects to Azure AD with our client_id."""
+        logger.info(
+            "OAuth authorize proxy called",
+            query_params=dict(request.query_params),
+        )
+
+        # Get all query parameters from the request
+        params = dict(request.query_params)
+
+        # Ensure our client_id is used
+        params["client_id"] = config.client_id
+
+        # Construct Azure AD authorization URL
+        tenant_id = config.tenant_id or "common"
+        azure_auth_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize"
+
+        # Redirect to Azure AD with all parameters
+        redirect_url = f"{azure_auth_url}?{urlencode(params)}"
+        logger.info("Redirecting to Azure AD", redirect_url=redirect_url)
+
+        return Response(status_code=302, headers={"Location": redirect_url})
+
+    @app.post("/token")
+    async def token_proxy(request: Request):
+        """Proxy token endpoint that forwards to Azure AD with managed identity authentication."""
+        logger.info("OAuth token proxy called")
+
+        # Get the request body
+        body = await request.body()
+        content_type = request.headers.get("content-type", "")
+
+        # Parse the form data
+        if "application/x-www-form-urlencoded" in content_type:
+            from urllib.parse import parse_qs, urlencode
+
+            form_data = parse_qs(body.decode("utf-8"))
+            # Convert from parse_qs format (lists) to simple dict
+            form_dict = {k: v[0] if v else "" for k, v in form_data.items()}
+
+            logger.info(
+                "Token request received",
+                grant_type=form_dict.get("grant_type"),
+                has_code=bool(form_dict.get("code")),
+                has_code_verifier=bool(form_dict.get("code_verifier")),
+                client_id=form_dict.get("client_id"),
+                redirect_uri=form_dict.get("redirect_uri"),
+            )
+        else:
+            logger.error(f"Unexpected content type: {content_type}")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": "invalid_request",
+                    "error_description": "Content-Type must be application/x-www-form-urlencoded",
+                },
+            )
+
+        # Check if we need to use managed identity with FIC
+        use_mi_fic = (
+            os.getenv("OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID")
+            == config.client_id
+        )
+
+        if use_mi_fic:
+            # Use managed identity to get a client assertion
+            from .auth.azure.managed_identity import (
+                get_managed_identity_assertion,
+            )
+
+            try:
+                # Get client assertion from managed identity
+                client_assertion = await get_managed_identity_assertion(
+                    audience=f"https://login.microsoftonline.com/{config.tenant_id}/oauth2/v2.0/token"
+                )
+
+                # Add client assertion to the form data
+                form_dict["client_assertion_type"] = (
+                    "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+                )
+                form_dict["client_assertion"] = client_assertion
+                form_dict["client_id"] = config.client_id
+
+                # Remove code_verifier if present (not needed with client assertion)
+                if "code_verifier" in form_dict:
+                    del form_dict["code_verifier"]
+
+                # Reconstruct the body with client assertion
+                body = urlencode(form_dict).encode("utf-8")
+
+                logger.info(
+                    "Using managed identity client assertion for token request"
+                )
+
+            except Exception as e:
+                logger.error(f"Failed to get managed identity assertion: {e}")
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "error": "server_error",
+                        "error_description": "Failed to get client assertion",
+                    },
+                )
+
+        # Construct Azure AD token URL
+        tenant_id = config.tenant_id or "common"
+        azure_token_url = (
+            f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+        )
+
+        # Forward the request to Azure AD
+        async with httpx.AsyncClient() as client:
+            try:
+                # Make the request to Azure AD
+                response = await client.post(
+                    azure_token_url,
+                    data=body,
+                    headers={
+                        "Content-Type": content_type,
+                        # Azure AD might need these headers
+                        "Origin": request.headers.get("origin", ""),
+                        "User-Agent": request.headers.get("user-agent", ""),
+                    },
+                )
+
+                logger.info(
+                    "Azure AD token response",
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                )
+
+                # Log error details if the request failed
+                if response.status_code != 200:
+                    error_text = response.text
+                    logger.error(
+                        "Azure AD token error",
+                        status_code=response.status_code,
+                        error_response=error_text,
+                    )
+
+                # Return Azure AD's response
+                return Response(
+                    content=response.content,
+                    status_code=response.status_code,
+                    headers={
+                        "Content-Type": response.headers.get(
+                            "content-type", "application/json"
+                        ),
+                        "Cache-Control": "no-store",
+                        "Pragma": "no-cache",
+                    },
+                )
+
+            except Exception as e:
+                logger.error(
+                    f"Error forwarding token request: {e}", exc_info=True
+                )
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "error": "server_error",
+                        "error_description": "Failed to forward token request",
+                    },
+                )
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint with readiness probe functionality."""

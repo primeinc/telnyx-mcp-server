@@ -197,3 +197,40 @@ def get_managed_identity() -> AzureManagedIdentity:
     if _default_identity is None:
         _default_identity = AzureManagedIdentity()
     return _default_identity
+
+
+async def get_managed_identity_assertion(audience: str) -> str:
+    """Get a client assertion JWT using managed identity for FIC authentication.
+
+    This is used when the Azure AD app is configured with a Federated Identity Credential
+    that trusts the managed identity. The assertion is used as client authentication
+    instead of a client secret.
+
+    Args:
+        audience: The audience for the assertion (typically the token endpoint URL)
+
+    Returns:
+        A JWT assertion signed by the managed identity
+
+    Raises:
+        Exception: If unable to get the assertion
+    """
+    # Get the managed identity instance
+    identity = get_managed_identity()
+
+    # Get a token for the audience
+    # For FIC, we need to get a token with the app's client ID as the audience
+    client_id = os.getenv("AZURE_CLIENT_ID")
+    if not client_id:
+        raise ValueError("AZURE_CLIENT_ID environment variable not set")
+
+    # The scope for getting an assertion is the app's client ID
+    scope = f"api://AzureADTokenExchange"
+
+    token = await identity.get_token(scope)
+    if not token:
+        raise Exception(
+            "Failed to get managed identity token for client assertion"
+        )
+
+    return token
