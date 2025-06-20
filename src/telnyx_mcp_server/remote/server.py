@@ -1291,8 +1291,31 @@ async def oauth_callback_debug(request: Request):
     if code_verifier:
         token_request["code_verifier"] = code_verifier
 
-    # Make request to token endpoint
-    token_url = f"{get_base_url_from_request(request)}/token"
+    # Determine which token endpoint to use
+    if config.is_app_service:
+        # Use our proxy endpoint
+        token_url = f"{get_base_url_from_request(request)}/token"
+    else:
+        # Call Azure AD directly for local testing
+        tenant_id = config.tenant_id or "common"
+        token_url = (
+            f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+        )
+
+        # Add authentication based on USE_JWT_ASSERTION setting
+        override_client_id = os.getenv(
+            "OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID"
+        )
+        use_jwt_assertion = (
+            os.getenv("USE_JWT_ASSERTION", "true").lower() == "true"
+        )
+
+        if override_client_id and not use_jwt_assertion:
+            # Add managed identity client ID as client secret
+            token_request["client_secret"] = override_client_id
+            logger.info(
+                "Added MI client ID as client secret for direct Azure AD call"
+            )
 
     async with httpx.AsyncClient() as client:
         try:
@@ -1336,6 +1359,7 @@ async def oauth_callback_debug(request: Request):
                         "debug_info": {
                             "redirect_uri_used": token_request["redirect_uri"],
                             "client_id": config.client_id,
+                            "tenant_id": config.tenant_id,
                             "use_jwt_assertion": os.getenv(
                                 "USE_JWT_ASSERTION", "true"
                             ),
@@ -1344,6 +1368,8 @@ async def oauth_callback_debug(request: Request):
                                     "OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID"
                                 )
                             ),
+                            "is_app_service": config.is_app_service,
+                            "token_endpoint": token_url,
                         },
                     }
                 )
@@ -1363,6 +1389,8 @@ async def oauth_callback_debug(request: Request):
                             "use_jwt_assertion": os.getenv(
                                 "USE_JWT_ASSERTION", "true"
                             ),
+                            "is_app_service": config.is_app_service,
+                            "token_endpoint": token_url,
                         },
                     },
                     status_code=response.status_code,
