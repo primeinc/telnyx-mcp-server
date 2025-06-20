@@ -715,6 +715,16 @@ async def token_proxy(request: Request):
     # Ensure our client_id is used
     data["client_id"] = client_id
 
+    # Log the token exchange attempt for debugging
+    logger.info(
+        f"Forwarding token request to Azure AD",
+        client_id=client_id,
+        tenant_id=tenant_id,
+        has_code="code" in data,
+        has_code_verifier="code_verifier" in data,
+        grant_type=data.get("grant_type"),
+    )
+
     # Forward to Azure AD token endpoint
     import httpx
 
@@ -723,6 +733,14 @@ async def token_proxy(request: Request):
             f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
         )
         response = await client.post(azure_token_url, data=data)
+
+        # Log the response for debugging
+        if response.status_code != 200:
+            logger.error(
+                f"Azure AD token exchange failed",
+                status_code=response.status_code,
+                error_response=response.text,
+            )
 
         # Return Azure AD response to Claude
         return Response(
