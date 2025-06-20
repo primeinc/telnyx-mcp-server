@@ -17,7 +17,6 @@ echo "Python version: $(python --version)"
 # Run the gunicorn server with our custom configuration
 exec gunicorn -k uvicorn.workers.UvicornWorker \
     --bind 0.0.0.0:8000 \
-    --timeout 600 \
     --access-logfile - \
     --error-logfile - \
     --log-level ${LOG_LEVEL:-info} \

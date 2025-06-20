@@ -43,7 +43,7 @@ resource web 'Microsoft.Web/sites@2022-03-01' = {
       scmMinTlsVersion: '1.2'
       healthCheckPath: '/health'
       // Startup command for Gunicorn with Uvicorn worker
-      appCommandLine: 'gunicorn -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 600 --access-logfile - --error-logfile - --log-level debug telnyx_mcp_server.remote.server:app'
+      appCommandLine: 'gunicorn -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --access-logfile - --error-logfile - --log-level debug telnyx_mcp_server.remote.server:app'
       // loadCertificates is Windows-only, not needed for Linux App Service
       appSettings: [for setting in items(union(appSettings, {
         OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID: userAssignedIdentityClientId
