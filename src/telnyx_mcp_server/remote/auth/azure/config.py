@@ -137,6 +137,21 @@ class AzureAuthConfig(BaseSettings):
                 f"DEBUG: __init__ no override - WEBSITE_AUTH_ENABLED not set or empty"
             )
 
+        # Also handle client_id and tenant_id directly
+        azure_client_id = os.getenv("AZURE_CLIENT_ID")
+        if azure_client_id and "client_id" not in data:
+            data["client_id"] = azure_client_id
+            print(
+                f"DEBUG: __init__ override - AZURE_CLIENT_ID='{azure_client_id}' -> client_id set"
+            )
+
+        azure_tenant_id = os.getenv("AZURE_TENANT_ID")
+        if azure_tenant_id and "tenant_id" not in data:
+            data["tenant_id"] = azure_tenant_id
+            print(
+                f"DEBUG: __init__ override - AZURE_TENANT_ID='{azure_tenant_id}' -> tenant_id set"
+            )
+
         super().__init__(**data)
 
     @field_validator("allowed_origins", mode="before")

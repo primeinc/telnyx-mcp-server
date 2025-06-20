@@ -894,6 +894,8 @@ async def health_check():
         "easy_auth_available": config.is_easy_auth_available,
         "environment": config.environment,
         "auth_enforced": config.auth_enforce,
+        "client_id": config.client_id,
+        "tenant_id": config.tenant_id,
         "debug": {
             "auth_enabled_field": config.auth_enabled,
             "is_app_service_field": config.is_app_service,
@@ -905,6 +907,8 @@ async def health_check():
             ),
             "website_instance_id_bool": bool(os.getenv("WEBSITE_INSTANCE_ID")),
             "logic_check": f"is_app_service={config.is_app_service} AND auth_enabled={config.auth_enabled} = {config.is_app_service and config.auth_enabled}",
+            "azure_client_id_env": os.getenv("AZURE_CLIENT_ID", "NOT_SET"),
+            "azure_tenant_id_env": os.getenv("AZURE_TENANT_ID", "NOT_SET"),
         },
     }
 
