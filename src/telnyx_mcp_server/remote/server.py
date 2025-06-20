@@ -156,9 +156,23 @@ class TelnyxMCPServer:
                     "resources": {"subscribe": True, "listChanged": True},
                     "logging": {},
                     "auth": {
-                        "oauth2": True,
+                        "type": "oauth2",
+                        "oauth2": {
+                            "authorizationEndpoint": f"{base_url}/authorize",
+                            "tokenEndpoint": f"{base_url}/token",
+                            "registrationEndpoint": f"{base_url}/register",
+                            "scopes": [
+                                "openid",
+                                "profile",
+                                "email",
+                                "mcp:read",
+                                "mcp:write",
+                                "mcp:execute",
+                            ],
+                            "pkce": True,
+                        },
                         "authorizationServers": [
-                            base_url  # Issuer URI only, not the metadata URL
+                            base_url  # Issuer URI
                         ],
                     },
                 },
