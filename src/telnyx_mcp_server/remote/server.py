@@ -726,46 +726,49 @@ async def token_proxy(request: Request):
     )
 
     # Add client authentication
+    # First check if we have a client secret
+    client_secret = os.getenv("AZURE_CLIENT_SECRET")
+
     # Check for override client ID (managed identity)
     override_client_id = os.getenv("OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID")
     use_jwt_assertion = (
         os.getenv("USE_JWT_ASSERTION", "false").lower() == "true"
     )
 
-    if override_client_id:
-        if use_jwt_assertion:
-            # Use managed identity to create JWT assertion
-            from .auth.azure.managed_identity import create_jwt_assertion
+    # Only attempt JWT assertion if we have BOTH override_client_id AND use_jwt_assertion
+    # AND no client secret (or explicitly want to use JWT)
+    if override_client_id and use_jwt_assertion and not client_secret:
+        # Use managed identity to create JWT assertion
+        from .auth.azure.managed_identity import create_jwt_assertion
 
-            jwt_assertion = await create_jwt_assertion(
-                managed_identity_client_id=override_client_id,
-                client_id=config.client_id,
-                audience=f"https://login.microsoftonline.com/{config.tenant_id}/oauth2/v2.0/token",
-            )
-            data["client_assertion_type"] = (
-                "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
-            )
-            data["client_assertion"] = jwt_assertion
-            logger.info("Using JWT assertion for authentication")
-        else:
-            # Use managed identity client ID as client secret
-            data["client_secret"] = override_client_id
-            logger.info("Using managed identity client ID as secret")
+        jwt_assertion = await create_jwt_assertion(
+            managed_identity_client_id=override_client_id,
+            client_id=config.client_id,
+            audience=f"https://login.microsoftonline.com/{config.tenant_id}/oauth2/v2.0/token",
+        )
+        data["client_assertion_type"] = (
+            "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+        )
+        data["client_assertion"] = jwt_assertion
+        logger.info("Using JWT assertion for authentication")
+    elif client_secret:
+        # We have a client secret, use it
+        data["client_secret"] = client_secret
+        logger.info("Using client secret for authentication")
+    elif override_client_id and not use_jwt_assertion:
+        # Legacy behavior: Use managed identity client ID as client secret
+        data["client_secret"] = override_client_id
+        logger.info("Using managed identity client ID as secret")
     else:
-        # Fallback to AZURE_CLIENT_SECRET
-        client_secret = os.getenv("AZURE_CLIENT_SECRET")
-        if client_secret:
-            data["client_secret"] = client_secret
-            logger.info("Using client secret for authentication")
-        else:
-            logger.error("No authentication method configured")
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "error": "server_error",
-                    "error_description": "No client authentication configured. Set either OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID or AZURE_CLIENT_SECRET",
-                },
-            )
+        # No authentication method available
+        logger.error("No authentication method configured")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "server_error",
+                "error_description": "No client authentication configured. Set either OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID or AZURE_CLIENT_SECRET",
+            },
+        )
 
     # Forward to Azure AD token endpoint
     import httpx
