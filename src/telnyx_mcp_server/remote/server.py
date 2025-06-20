@@ -897,7 +897,14 @@ async def mcp_metadata(request: Request):
             "oauth2": {
                 "authorizationEndpoint": f"{base_url}/authorize",
                 "tokenEndpoint": f"{base_url}/token",
-                "scopes": ["openid", "profile", "email"],
+                "scopes": [
+                    "openid",
+                    "profile",
+                    "email",
+                    "mcp:read",
+                    "mcp:write",
+                    "mcp:execute",
+                ],
                 "pkce": True,
             },
         },
@@ -915,6 +922,36 @@ async def mcp_oauth_metadata(request: Request):
     """MCP OAuth Metadata endpoint - alias for mcp-metadata."""
     # Just redirect to the mcp-metadata endpoint
     return await mcp_metadata(request)
+
+
+@app.get("/.well-known/oauth-protected-resource")
+async def oauth_protected_resource(request: Request):
+    """OAuth 2.0 Protected Resource Metadata (RFC 8897).
+
+    This tells clients about the authorization server for this protected resource.
+    """
+    # Get base URL from request
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()
+    forwarded_host = request.headers.get(
+        "x-forwarded-host"
+    ) or request.headers.get("host")
+
+    if forwarded_proto and forwarded_host:
+        base_url = f"{forwarded_proto}://{forwarded_host}"
+    else:
+        base_url = str(request.base_url).rstrip("/")
+
+    return {
+        "resource": base_url,
+        "authorization_servers": [
+            f"{base_url}/.well-known/oauth-authorization-server"
+        ],
+        "bearer_methods_supported": ["header"],
+        "resource_signing_alg_values_supported": ["HS256"],
+        "resource_documentation": f"{base_url}/docs",
+        "resource_policy_uri": f"{base_url}/privacy",
+        "resource_tos_uri": f"{base_url}/terms",
+    }
 
 
 # OAuth 2.0 endpoints (simplified for MCP)
