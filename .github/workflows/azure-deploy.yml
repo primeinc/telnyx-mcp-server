@@ -305,9 +305,11 @@ jobs:
         echo "Testing health endpoint and verifying git commit..."
         EXPECTED_SHORT_COMMIT="${EXPECTED_COMMIT:0:7}"
         COMMIT_VERIFIED=false
+        COMMIT_MAX_RETRIES=20  # More retries for git commit verification
+        COMMIT_SLEEP_TIME=15   # Longer sleep for app restarts
 
-        for attempt in $(seq 1 $MAX_RETRIES); do
-          echo "Git commit verification attempt $attempt/$MAX_RETRIES..."
+        for attempt in $(seq 1 $COMMIT_MAX_RETRIES); do
+          echo "Git commit verification attempt $attempt/$COMMIT_MAX_RETRIES..."
 
           if curl -f -s "${WEBAPP_URL}/health" > /tmp/health.json; then
             echo "Health response:"
@@ -322,21 +324,21 @@ jobs:
               break
             else
               echo "RETRY: Git commit mismatch - deployed: '$DEPLOYED_COMMIT', expected: '$EXPECTED_SHORT_COMMIT'"
-              if [ $attempt -lt $MAX_RETRIES ]; then
-                echo "Waiting 10s before retry..."
-                sleep 10
+              if [ $attempt -lt $COMMIT_MAX_RETRIES ]; then
+                echo "Waiting ${COMMIT_SLEEP_TIME}s before retry..."
+                sleep $COMMIT_SLEEP_TIME
               fi
             fi
           else
             echo "RETRY: Health endpoint not responding"
-            if [ $attempt -lt $MAX_RETRIES ]; then
-              sleep 10
+            if [ $attempt -lt $COMMIT_MAX_RETRIES ]; then
+              sleep $COMMIT_SLEEP_TIME
             fi
           fi
         done
 
         if [ "$COMMIT_VERIFIED" != "true" ]; then
-          echo "ERROR: Failed to verify git commit after $MAX_RETRIES attempts"
+          echo "ERROR: Failed to verify git commit after $COMMIT_MAX_RETRIES attempts ($(($COMMIT_MAX_RETRIES * $COMMIT_SLEEP_TIME))s total)"
           echo "This means the wrong code version may be deployed!"
           exit 1
         fi
