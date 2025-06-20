@@ -1236,6 +1236,153 @@ if config.is_app_service:
         return response_data
 
 
+@app.get("/oauth/callback/debug")
+async def oauth_callback_debug(request: Request):
+    """Debug endpoint to test OAuth callbacks and exchange authorization codes for tokens."""
+    logger.info("OAuth callback debug endpoint called")
+
+    # Get query parameters
+    code = request.query_params.get("code")
+    state = request.query_params.get("state", "")
+    session_state = request.query_params.get("session_state", "")
+    error = request.query_params.get("error")
+    error_description = request.query_params.get("error_description", "")
+
+    if error:
+        return JSONResponse(
+            content={
+                "error": error,
+                "error_description": error_description,
+                "message": "OAuth authorization failed",
+            },
+            status_code=400,
+        )
+
+    if not code:
+        return JSONResponse(
+            content={
+                "error": "missing_code",
+                "message": "No authorization code provided",
+            },
+            status_code=400,
+        )
+
+    # Log the callback details
+    logger.info(
+        "OAuth callback received",
+        code_length=len(code),
+        has_state=bool(state),
+        session_state=session_state,
+    )
+
+    # Prepare token exchange request
+    token_request = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": str(request.url).split("?")[
+            0
+        ],  # Current URL without query params
+        "client_id": config.client_id,
+    }
+
+    # Add code_verifier if we're using PKCE (you would need to store this from the authorization request)
+    # For now, we'll just note it's missing
+    code_verifier = request.query_params.get("code_verifier", "")
+    if code_verifier:
+        token_request["code_verifier"] = code_verifier
+
+    # Make request to token endpoint
+    token_url = f"{get_base_url_from_request(request)}/token"
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                token_url,
+                data=token_request,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+
+            logger.info(
+                "Token exchange response",
+                status_code=response.status_code,
+                has_access_token="access_token" in response.json()
+                if response.status_code == 200
+                else False,
+            )
+
+            if response.status_code == 200:
+                tokens = response.json()
+                return JSONResponse(
+                    content={
+                        "message": "Token exchange successful!",
+                        "tokens": {
+                            "access_token": tokens.get("access_token", "")[:50]
+                            + "..."
+                            if tokens.get("access_token")
+                            else None,
+                            "token_type": tokens.get("token_type"),
+                            "expires_in": tokens.get("expires_in"),
+                            "scope": tokens.get("scope"),
+                            "id_token": tokens.get("id_token", "")[:50] + "..."
+                            if tokens.get("id_token")
+                            else None,
+                            "refresh_token": tokens.get("refresh_token", "")[
+                                :50
+                            ]
+                            + "..."
+                            if tokens.get("refresh_token")
+                            else None,
+                        },
+                        "debug_info": {
+                            "redirect_uri_used": token_request["redirect_uri"],
+                            "client_id": config.client_id,
+                            "use_jwt_assertion": os.getenv(
+                                "USE_JWT_ASSERTION", "true"
+                            ),
+                            "has_override_client_id": bool(
+                                os.getenv(
+                                    "OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID"
+                                )
+                            ),
+                        },
+                    }
+                )
+            else:
+                error_response = response.json()
+                return JSONResponse(
+                    content={
+                        "message": "Token exchange failed",
+                        "error": error_response,
+                        "debug_info": {
+                            "status_code": response.status_code,
+                            "token_request": {
+                                k: v
+                                for k, v in token_request.items()
+                                if k != "code"
+                            },
+                            "use_jwt_assertion": os.getenv(
+                                "USE_JWT_ASSERTION", "true"
+                            ),
+                        },
+                    },
+                    status_code=response.status_code,
+                )
+
+        except Exception as e:
+            logger.error(f"Error during token exchange: {e}", exc_info=True)
+            return JSONResponse(
+                content={
+                    "error": "token_exchange_error",
+                    "message": f"Failed to exchange authorization code: {str(e)}",
+                    "debug_info": {
+                        "redirect_uri_used": token_request["redirect_uri"],
+                        "client_id": config.client_id,
+                    },
+                },
+                status_code=500,
+            )
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint with readiness probe functionality."""
