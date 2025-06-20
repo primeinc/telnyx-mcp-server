@@ -58,6 +58,8 @@ resource clientApp 'Microsoft.Graph/applications@v1.0' = {
     redirectUris: [
       'http://localhost:8000/.auth/login/aad/callback'
       '${webAppEndpoint}/.auth/login/aad/callback'
+      'http://localhost:8000/auth/callback'
+      '${webAppEndpoint}/auth/callback'
     ]
     implicitGrantSettings: { enableIdTokenIssuance: true }
   }
