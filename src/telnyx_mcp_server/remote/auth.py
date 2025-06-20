@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import json
 import os
 from typing import Any, Dict, Optional
+import urllib.parse
 
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, Request, status
@@ -88,6 +89,36 @@ class AuthService:
     def get_logout_url() -> str:
         """Get the Built-in Auth logout URL."""
         return "/.auth/logout"
+
+    @staticmethod
+    def get_authorization_url(state: str) -> str:
+        """Get the Azure AD authorization URL.
+
+        Args:
+            state: State parameter for OAuth flow
+
+        Returns:
+            The Azure AD authorization URL
+        """
+        if not AZURE_TENANT_ID:
+            raise ValueError("AZURE_TENANT_ID must be configured")
+
+        # Build Azure AD authorization URL
+        params = {
+            "client_id": os.getenv("AZURE_CLIENT_ID"),
+            "response_type": "code",
+            "redirect_uri": os.getenv(
+                "AZURE_REDIRECT_URI", "http://localhost:8000/auth/callback"
+            ),
+            "response_mode": "query",
+            "scope": "openid profile email User.Read",
+            "state": state,
+        }
+
+        auth_url = f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/oauth2/v2.0/authorize"
+        query_string = urllib.parse.urlencode(params)
+
+        return f"{auth_url}?{query_string}"
 
     @staticmethod
     def create_jwt_token(user_data: Dict[str, Any]) -> str:
