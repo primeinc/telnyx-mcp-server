@@ -826,18 +826,11 @@ async def oauth_protected_resource_metadata(request: Request):
     logger.info("OAuth protected resource metadata endpoint called")
     base_url = get_base_url_from_request(request)
 
-    if config.is_app_service:
-        # Azure Easy Auth - point to Azure's authorization server
-        authorization_servers = [
-            f"https://login.microsoftonline.com/{config.tenant_id}/v2.0"
-            if config.tenant_id
-            else "https://login.microsoftonline.com/common/v2.0"
-        ]
-    else:
-        # Local development - point to our server's authorization server
-        authorization_servers = [
-            f"{base_url}/.well-known/oauth-authorization-server"
-        ]
+    # Always point to our own authorization server metadata
+    # Claude will fetch this to discover the actual OAuth endpoints
+    authorization_servers = [
+        f"{base_url}/.well-known/oauth-authorization-server"
+    ]
 
     return {
         "resource": base_url,
