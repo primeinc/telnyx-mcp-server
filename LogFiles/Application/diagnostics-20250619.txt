@@ -1,0 +1,63 @@
+2025-06-19 23:34:52.745 +00:00 [Warning] Microsoft.AspNetCore.Hosting.Diagnostics: Overriding HTTP_PORTS '8080' and HTTPS_PORTS ''. Binding to values defined by URLS instead 'http://0.0.0.0:8181'.
+2025-06-19 23:34:52.807 +00:00 [Information] Middleware: Destination base URL is http://169.254.130.3:8000
+2025-06-19 23:34:53.870 +00:00 [Information] Microsoft.Hosting.Lifetime: Now listening on: http://0.0.0.0:8181
+2025-06-19 23:34:53.871 +00:00 [Information] Microsoft.Hosting.Lifetime: Application started. Press Ctrl+C to shut down.
+2025-06-19 23:34:53.871 +00:00 [Information] Microsoft.Hosting.Lifetime: Hosting environment: staging
+2025-06-19 23:34:53.871 +00:00 [Information] Microsoft.Hosting.Lifetime: Content root path: /app
+2025-06-19 23:34:54.859 +00:00 [Information] Microsoft.AspNetCore.Hosting.Diagnostics: Request starting HTTP/1.1 GET http://169.254.130.4:8181/robots933456.txt - - -
+2025-06-19 23:34:55.383 +00:00 [Information] Microsoft.AspNetCore.Hosting.Diagnostics: Request finished HTTP/1.1 GET http://169.254.130.4:8181/robots933456.txt - 302 - - 528.7621ms
+2025-06-19 23:39:12.488 +00:00 [Warning] Microsoft.AspNetCore.Hosting.Diagnostics: Overriding HTTP_PORTS '8080' and HTTPS_PORTS ''. Binding to values defined by URLS instead 'http://0.0.0.0:8181'.
+2025-06-19 23:39:12.620 +00:00 [Information] Middleware: Destination base URL is http://169.254.130.4:8000
+2025-06-19 23:39:18.471 +00:00 [Information] Microsoft.Hosting.Lifetime: Now listening on: http://0.0.0.0:8181
+2025-06-19 23:39:18.489 +00:00 [Information] Microsoft.Hosting.Lifetime: Application started. Press Ctrl+C to shut down.
+2025-06-19 23:39:18.489 +00:00 [Information] Microsoft.Hosting.Lifetime: Hosting environment: staging
+2025-06-19 23:39:18.489 +00:00 [Information] Microsoft.Hosting.Lifetime: Content root path: /app
+2025-06-19 23:39:28.789 +00:00 [Information] Microsoft.AspNetCore.Hosting.Diagnostics: Request starting HTTP/1.1 GET http://169.254.130.5:8181/robots933456.txt - - -
+2025-06-19 23:39:29.371 +00:00 [Information] Microsoft.AspNetCore.Hosting.Diagnostics: Request finished HTTP/1.1 GET http://169.254.130.5:8181/robots933456.txt - 302 - - 576.6944ms
+2025-06-19 23:41:19.335 +00:00 [Warning] Microsoft.AspNetCore.Hosting.Diagnostics: Overriding HTTP_PORTS '8080' and HTTPS_PORTS ''. Binding to values defined by URLS instead 'http://0.0.0.0:8181'.
+2025-06-19 23:41:19.647 +00:00 [Information] Middleware: Destination base URL is http://169.254.130.6:8000
+2025-06-19 23:41:22.650 +00:00 [Information] Microsoft.Hosting.Lifetime: Now listening on: http://0.0.0.0:8181
+2025-06-19 23:41:22.651 +00:00 [Information] Microsoft.Hosting.Lifetime: Application started. Press Ctrl+C to shut down.
+2025-06-19 23:41:22.651 +00:00 [Information] Microsoft.Hosting.Lifetime: Hosting environment: staging
+2025-06-19 23:41:22.651 +00:00 [Information] Microsoft.Hosting.Lifetime: Content root path: /app
+2025-06-19 23:41:32.749 +00:00 [Information] Microsoft.AspNetCore.Hosting.Diagnostics: Request starting HTTP/1.1 GET http://169.254.130.7:8181/robots933456.txt - - -
+2025-06-19 23:41:34.026 +00:00 [Information] Microsoft.AspNetCore.Hosting.Diagnostics: Request finished HTTP/1.1 GET http://169.254.130.7:8181/robots933456.txt - 302 - - 1270.5062ms
+2025-06-19 23:43:03.151 +00:00 [Warning] Microsoft.AspNetCore.Hosting.Diagnostics: Overriding HTTP_PORTS '8080' and HTTPS_PORTS ''. Binding to values defined by URLS instead 'http://0.0.0.0:8181'.
+2025-06-19 23:43:03.374 +00:00 [Information] Middleware: Destination base URL is http://169.254.130.6:8000
+2025-06-19 23:43:06.307 +00:00 [Information] Microsoft.Hosting.Lifetime: Now listening on: http://0.0.0.0:8181
+2025-06-19 23:43:06.326 +00:00 [Information] Microsoft.Hosting.Lifetime: Application started. Press Ctrl+C to shut down.
+2025-06-19 23:43:06.340 +00:00 [Information] Microsoft.Hosting.Lifetime: Hosting environment: staging
+2025-06-19 23:43:06.340 +00:00 [Information] Microsoft.Hosting.Lifetime: Content root path: /app
+2025-06-19 23:43:14.878 +00:00 [Information] Microsoft.AspNetCore.Hosting.Diagnostics: Request starting HTTP/1.1 GET http://169.254.130.7:8181/robots933456.txt - - -
+2025-06-19 23:43:15.569 +00:00 [Information] Microsoft.AspNetCore.Hosting.Diagnostics: Request finished HTTP/1.1 GET http://169.254.130.7:8181/robots933456.txt - 302 - - 691.9041ms
+2025-06-19 23:46:13.024 +00:00 [Warning] Microsoft.AspNetCore.Hosting.Diagnostics: Overriding HTTP_PORTS '8080' and HTTPS_PORTS ''. Binding to values defined by URLS instead 'http://0.0.0.0:8181'.
+2025-06-19 23:46:13.151 +00:00 [Information] Middleware: Destination base URL is http://169.254.130.6:8000
+2025-06-19 23:46:15.501 +00:00 [Information] Microsoft.Hosting.Lifetime: Now listening on: http://0.0.0.0:8181
+2025-06-19 23:46:15.502 +00:00 [Information] Microsoft.Hosting.Lifetime: Application started. Press Ctrl+C to shut down.
+2025-06-19 23:46:15.502 +00:00 [Information] Microsoft.Hosting.Lifetime: Hosting environment: staging
+2025-06-19 23:46:15.502 +00:00 [Information] Microsoft.Hosting.Lifetime: Content root path: /app
+2025-06-19 23:46:27.382 +00:00 [Information] Microsoft.AspNetCore.Hosting.Diagnostics: Request starting HTTP/1.1 GET http://169.254.130.7:8181/robots933456.txt - - -
+2025-06-19 23:49:39.917 +00:00 [Warning] Microsoft.AspNetCore.Hosting.Diagnostics: Overriding HTTP_PORTS '8080' and HTTPS_PORTS ''. Binding to values defined by URLS instead 'http://0.0.0.0:8181'.
+2025-06-19 23:49:40.079 +00:00 [Information] Middleware: Destination base URL is http://169.254.130.6:8000
+2025-06-19 23:49:42.295 +00:00 [Information] Microsoft.Hosting.Lifetime: Now listening on: http://0.0.0.0:8181
+2025-06-19 23:49:42.304 +00:00 [Information] Microsoft.Hosting.Lifetime: Application started. Press Ctrl+C to shut down.
+2025-06-19 23:49:42.304 +00:00 [Information] Microsoft.Hosting.Lifetime: Hosting environment: staging
+2025-06-19 23:49:42.304 +00:00 [Information] Microsoft.Hosting.Lifetime: Content root path: /app
+2025-06-19 23:49:50.824 +00:00 [Information] Microsoft.AspNetCore.Hosting.Diagnostics: Request starting HTTP/1.1 GET http://169.254.130.7:8181/robots933456.txt - - -
+2025-06-19 23:49:51.567 +00:00 [Information] Microsoft.AspNetCore.Hosting.Diagnostics: Request finished HTTP/1.1 GET http://169.254.130.7:8181/robots933456.txt - 302 - - 743.4228ms
+2025-06-19 23:53:11.326 +00:00 [Warning] Microsoft.AspNetCore.Hosting.Diagnostics: Overriding HTTP_PORTS '8080' and HTTPS_PORTS ''. Binding to values defined by URLS instead 'http://0.0.0.0:8181'.
+2025-06-19 23:53:11.437 +00:00 [Information] Middleware: Destination base URL is http://169.254.130.6:8000
+2025-06-19 23:53:13.912 +00:00 [Information] Microsoft.Hosting.Lifetime: Now listening on: http://0.0.0.0:8181
+2025-06-19 23:53:13.913 +00:00 [Information] Microsoft.Hosting.Lifetime: Application started. Press Ctrl+C to shut down.
+2025-06-19 23:53:13.913 +00:00 [Information] Microsoft.Hosting.Lifetime: Hosting environment: staging
+2025-06-19 23:53:13.913 +00:00 [Information] Microsoft.Hosting.Lifetime: Content root path: /app
+2025-06-19 23:53:21.592 +00:00 [Information] Microsoft.AspNetCore.Hosting.Diagnostics: Request starting HTTP/1.1 GET http://169.254.130.8:8181/robots933456.txt - - -
+2025-06-19 23:53:22.102 +00:00 [Information] Microsoft.AspNetCore.Hosting.Diagnostics: Request finished HTTP/1.1 GET http://169.254.130.8:8181/robots933456.txt - 302 - - 514.4055ms
+2025-06-19 23:56:53.025 +00:00 [Warning] Microsoft.AspNetCore.Hosting.Diagnostics: Overriding HTTP_PORTS '8080' and HTTPS_PORTS ''. Binding to values defined by URLS instead 'http://0.0.0.0:8181'.
+2025-06-19 23:56:53.134 +00:00 [Information] Middleware: Destination base URL is http://169.254.130.6:8000
+2025-06-19 23:56:55.085 +00:00 [Information] Microsoft.Hosting.Lifetime: Now listening on: http://0.0.0.0:8181
+2025-06-19 23:56:55.086 +00:00 [Information] Microsoft.Hosting.Lifetime: Application started. Press Ctrl+C to shut down.
+2025-06-19 23:56:55.086 +00:00 [Information] Microsoft.Hosting.Lifetime: Hosting environment: staging
+2025-06-19 23:56:55.086 +00:00 [Information] Microsoft.Hosting.Lifetime: Content root path: /app
+2025-06-19 23:57:05.915 +00:00 [Information] Microsoft.AspNetCore.Hosting.Diagnostics: Request starting HTTP/1.1 GET http://169.254.130.8:8181/robots933456.txt - - -
+2025-06-19 23:57:07.246 +00:00 [Information] Microsoft.AspNetCore.Hosting.Diagnostics: Request finished HTTP/1.1 GET http://169.254.130.8:8181/robots933456.txt - 302 - - 1318.9253ms
