@@ -150,7 +150,9 @@ class AuthService:
 
 async def get_current_user(
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(
+        HTTPBearer(auto_error=False)
+    ),
 ) -> Dict[str, Any]:
     """Get current user from Built-in Auth header or JWT token.
 
@@ -165,6 +167,14 @@ async def get_current_user(
         return user_data
 
     # Fall back to JWT token from MSAL (for direct API access)
-    token = credentials.credentials
-    user_data = AuthService.decode_jwt_token(token)
-    return user_data
+    if credentials:
+        token = credentials.credentials
+        user_data = AuthService.decode_jwt_token(token)
+        return user_data
+
+    # No authentication found
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
