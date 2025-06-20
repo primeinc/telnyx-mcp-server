@@ -1,6 +1,7 @@
 """Structured logging configuration with PII redaction for MCP server."""
 
 from contextvars import ContextVar
+import json
 import logging
 import os
 import re
@@ -222,16 +223,44 @@ def add_logger_name(
     return event_dict
 
 
+def load_git_commit() -> str:
+    """Load git commit from embedded file or environment."""
+    try:
+        # This file is located in src/git_info.json in the deployment
+        src_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        git_info_path = os.path.join(src_dir, "git_info.json")
+        with open(git_info_path, "r") as f:
+            git_info = json.load(f)
+            commit = git_info.get("commit", "unknown")
+            # Return first 7 characters of commit hash
+            if commit != "unknown":
+                return commit[:7]
+            return commit
+    except Exception:
+        # For local development, try git command
+        try:
+            import subprocess
+
+            result = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return result.stdout.strip()
+        except Exception:
+            return "unknown"
+
+
+# Load git commit at module level
+_GIT_COMMIT = load_git_commit()
+
+
 def add_git_commit(
     logger: Any, method_name: str, event_dict: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Add git commit to log events."""
-    # Get commit from environment variable or default
-    commit = os.getenv("GIT_COMMIT_HASH", "unknown")
-    if commit != "unknown":
-        # Use short hash
-        commit = commit[:7]
-    event_dict["commit"] = commit
+    event_dict["commit"] = _GIT_COMMIT
     return event_dict
 
 
