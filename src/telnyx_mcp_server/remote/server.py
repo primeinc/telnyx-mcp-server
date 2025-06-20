@@ -14,9 +14,10 @@ from typing import Any, Dict, List, Optional, Union
 import urllib.parse
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import httpx
 from sse_starlette.sse import EventSourceResponse
 
@@ -589,20 +590,22 @@ async def root(
 @app.post("/")
 async def root_post(
     request: Request,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(
+        HTTPBearer(auto_error=False)
+    ),
 ):
     """POST endpoint at root - handles MCP protocol requests."""
     logger.info(
         "ROOT POST endpoint called - redirecting to MCP handler",
         url=str(request.url),
-        current_user=current_user,
+        auth_header=request.headers.get("authorization", "None"),
         client_ip=request.headers.get(
             "x-client-ip", request.client.host if request.client else "unknown"
         ),
     )
 
     # Claude Desktop is trying to POST to root - handle it as MCP protocol
-    return await mcp_endpoint(request, current_user)
+    return await mcp_endpoint(request, credentials)
 
 
 @app.get("/health")
@@ -1419,34 +1422,20 @@ async def register(request: Request):
 @app.post("/mcp")
 async def mcp_endpoint(
     request: Request,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(
+        HTTPBearer(auto_error=False)
+    ),
 ):
     """MCP endpoint implementing Streamable HTTP transport.
 
     Authentication is required for all methods except initialize.
     """
-    # Comprehensive logging
-    logger.info(
-        "MCP POST endpoint called",
-        url=str(request.url),
-        method=request.method,
-        auth_header=request.headers.get("authorization", "None"),
-        current_user=current_user,
-        accept=request.headers.get("accept", "None"),
-        content_type=request.headers.get("content-type", "None"),
-        client_ip=request.headers.get(
-            "x-client-ip", request.client.host if request.client else "unknown"
-        ),
-        session_id=request.headers.get("mcp-session-id", "None"),
-    )
-    # Log all headers separately for debugging
-    logger.debug(f"Request headers: {dict(request.headers)}")
-
     # Get base URL first
     base_url = get_base_url_from_request(request)
 
     # Parse the request body first to check method
     message = None
+    current_user = None
     try:
         body = await request.body()
         logger.debug(
@@ -1456,42 +1445,76 @@ async def mcp_endpoint(
 
         # Determine if this request requires authentication
         requires_auth = True
+        method = ""
         if isinstance(message, dict):
             method = message.get("method", "")
             # Only initialize and its notification are allowed without auth
             if method in ["initialize", "notifications/initialized"]:
                 requires_auth = False
 
-        # If auth is required but user is not authenticated, return 401
-        if requires_auth and not current_user:
-            headers = {
-                "WWW-Authenticate": f'Bearer realm="MCP Server", resource_metadata_uri="{base_url}/.well-known/oauth-protected-resource"',
-                "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"',
-            }
+        # If auth is required, check authentication
+        if requires_auth:
+            try:
+                # First try Built-in Auth header
+                current_user = AuthService.extract_user_from_header(request)
+                if not current_user and credentials:
+                    # Fall back to JWT token from MSAL
+                    token = credentials.credentials
+                    current_user = AuthService.decode_jwt_token(token)
 
-            # Determine response ID for error
-            response_id = None
-            if isinstance(message, dict):
-                response_id = message.get("id")
+                if not current_user:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Authentication required",
+                    )
+            except HTTPException:
+                headers = {
+                    "WWW-Authenticate": f'Bearer realm="MCP Server", resource_metadata_uri="{base_url}/.well-known/oauth-protected-resource"',
+                    "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"',
+                }
 
-            return Response(
-                content=json.dumps(
-                    {
-                        "jsonrpc": "2.0",
-                        "id": response_id,
-                        "error": {
-                            "code": -32603,
-                            "message": "Authentication required",
-                            "data": {
-                                "oauth_url": f"{base_url}/.well-known/oauth-authorization-server"
+                # Determine response ID for error
+                response_id = None
+                if isinstance(message, dict):
+                    response_id = message.get("id")
+
+                return Response(
+                    content=json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": response_id,
+                            "error": {
+                                "code": -32603,
+                                "message": "Authentication required",
+                                "data": {
+                                    "oauth_url": f"{base_url}/.well-known/oauth-authorization-server"
+                                },
                             },
-                        },
-                    }
-                ),
-                status_code=401,
-                headers=headers,
-                media_type="application/json",
-            )
+                        }
+                    ),
+                    status_code=401,
+                    headers=headers,
+                    media_type="application/json",
+                )
+
+        # Comprehensive logging
+        logger.info(
+            "MCP POST endpoint called",
+            url=str(request.url),
+            method=request.method,
+            auth_header=request.headers.get("authorization", "None"),
+            current_user=current_user,
+            accept=request.headers.get("accept", "None"),
+            content_type=request.headers.get("content-type", "None"),
+            client_ip=request.headers.get(
+                "x-client-ip",
+                request.client.host if request.client else "unknown",
+            ),
+            session_id=request.headers.get("mcp-session-id", "None"),
+            mcp_method=method,
+        )
+        # Log all headers separately for debugging
+        logger.debug(f"Request headers: {dict(request.headers)}")
 
     except json.JSONDecodeError as e:
         # Return parse error
