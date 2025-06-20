@@ -222,6 +222,19 @@ def add_logger_name(
     return event_dict
 
 
+def add_git_commit(
+    logger: Any, method_name: str, event_dict: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Add git commit to log events."""
+    # Get commit from environment variable or default
+    commit = os.getenv("GIT_COMMIT_HASH", "unknown")
+    if commit != "unknown":
+        # Use short hash
+        commit = commit[:7]
+    event_dict["commit"] = commit
+    return event_dict
+
+
 class TraceIdMiddleware:
     """Middleware to add trace IDs to requests."""
 
@@ -289,6 +302,7 @@ def configure_structlog(
         add_timestamp,
         add_log_level,
         add_logger_name,
+        add_git_commit,
         add_trace_id,
         structlog.processors.add_log_level,
         structlog.processors.StackInfoRenderer(),

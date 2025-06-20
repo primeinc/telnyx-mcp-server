@@ -89,6 +89,38 @@ __version__ = "0.5.0"
 PROTOCOL_VERSION = "2025-03-26"
 
 
+def get_git_commit_id() -> str:
+    """Get the current git commit ID.
+
+    First tries to get from environment variable (set during deployment),
+    then falls back to git command for local development.
+    """
+    # Check for environment variable first (set by GitHub Actions)
+    commit_hash = os.getenv("GIT_COMMIT_HASH")
+    if commit_hash:
+        # Return first 7 characters for short hash
+        return commit_hash[:7]
+
+    # Fallback to git command for local development
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
+    except Exception:
+        # If git is not available or we're not in a git repo
+        return "unknown"
+
+
+# Get commit ID at startup
+GIT_COMMIT = get_git_commit_id()
+
+
 class TelnyxMCPServer:
     """Telnyx MCP Server implementation."""
 
@@ -442,7 +474,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     logger.info(
         f"Starting Telnyx Remote MCP Server v{__version__} "
-        f"(env={os.getenv('ENVIRONMENT', 'development')}, "
+        f"(commit={GIT_COMMIT}, env={os.getenv('ENVIRONMENT', 'development')}, "
         f"log_level={log_level}, pii_redaction={enable_pii_redaction})"
     )
     logger.info(f"Python version: {sys.version}")
@@ -1772,13 +1804,23 @@ async def mcp_endpoint(
             except HTTPException:
                 # According to RFC 6750, return proper OAuth challenge header
                 # Include authorization_uri parameter that Claude looks for
-                auth_header = (
-                    'Bearer realm="telnyx-mcp", '
-                    'error="invalid_token", '
-                    'error_description="Access token is missing or invalid", '
-                    'scope="openid profile email mcp:read mcp:write mcp:execute", '
-                    f'authorization_uri="{base_url}/.well-known/oauth-authorization-server"'
-                )
+                # IMPORTANT: Do NOT include error= when no token was provided
+                if credentials and credentials.credentials:
+                    # Token was provided but invalid
+                    auth_header = (
+                        'Bearer realm="telnyx-mcp", '
+                        'error="invalid_token", '
+                        'error_description="Access token is missing or invalid", '
+                        'scope="openid profile email mcp:read mcp:write mcp:execute", '
+                        f'authorization_uri="{base_url}/.well-known/oauth-authorization-server"'
+                    )
+                else:
+                    # No token provided - omit error parameter per RFC 6750
+                    auth_header = (
+                        'Bearer realm="telnyx-mcp", '
+                        'scope="openid profile email mcp:read mcp:write mcp:execute", '
+                        f'authorization_uri="{base_url}/.well-known/oauth-authorization-server"'
+                    )
                 headers = {
                     "WWW-Authenticate": auth_header,
                     "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth2-authorization-server"',
@@ -1957,13 +1999,23 @@ async def mcp_sse_stream(
             # Return 401 with proper OAuth challenge header
             base_url = get_base_url_from_request(request)
             # Include authorization_uri parameter that Claude looks for
-            auth_header = (
-                'Bearer realm="telnyx-mcp", '
-                'error="invalid_token", '
-                'error_description="Access token is missing or invalid", '
-                'scope="openid profile email mcp:read mcp:write mcp:execute", '
-                f'authorization_uri="{base_url}/.well-known/oauth-authorization-server"'
-            )
+            # IMPORTANT: Do NOT include error= when no token was provided
+            if credentials and credentials.credentials:
+                # Token was provided but invalid
+                auth_header = (
+                    'Bearer realm="telnyx-mcp", '
+                    'error="invalid_token", '
+                    'error_description="Access token is missing or invalid", '
+                    'scope="openid profile email mcp:read mcp:write mcp:execute", '
+                    f'authorization_uri="{base_url}/.well-known/oauth-authorization-server"'
+                )
+            else:
+                # No token provided - omit error parameter per RFC 6750
+                auth_header = (
+                    'Bearer realm="telnyx-mcp", '
+                    'scope="openid profile email mcp:read mcp:write mcp:execute", '
+                    f'authorization_uri="{base_url}/.well-known/oauth-authorization-server"'
+                )
             headers = {
                 "WWW-Authenticate": auth_header,
                 "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth2-authorization-server"',
@@ -1987,11 +2039,11 @@ async def mcp_sse_stream(
     except Exception:
         # Any auth error should result in proper OAuth challenge
         base_url = get_base_url_from_request(request)
+        # No token was provided in this exception case
         auth_header = (
             'Bearer realm="telnyx-mcp", '
-            'error="invalid_token", '
-            'error_description="Access token is missing or invalid", '
-            'scope="openid profile email mcp:read mcp:write mcp:execute"'
+            'scope="openid profile email mcp:read mcp:write mcp:execute", '
+            f'authorization_uri="{base_url}/.well-known/oauth-authorization-server"'
         )
         headers = {
             "WWW-Authenticate": auth_header,
