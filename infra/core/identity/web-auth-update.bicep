@@ -13,6 +13,10 @@ resource configAuth 'Microsoft.Web/sites/config@2022-03-01' = {
   parent: appService
   name: 'authsettingsV2'
   properties: {
+    platform: {
+      enabled: true
+      runtimeVersion: '~1'
+    }
     globalValidation: {
       requireAuthentication: true
       unauthenticatedClientAction: 'RedirectToLoginPage'
