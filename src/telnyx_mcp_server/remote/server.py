@@ -687,6 +687,7 @@ async def oauth_authorization_server_metadata(request: Request):
             "issuer": f"https://login.microsoftonline.com/{tenant_id}/v2.0",
             "authorization_endpoint": f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize",
             "token_endpoint": f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+            "registration_endpoint": f"{base_url}/register",
             "userinfo_endpoint": "https://graph.microsoft.com/oidc/userinfo",
             "jwks_uri": f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys",
             "response_types_supported": ["code"],
@@ -758,20 +759,6 @@ async def oauth_authorization_server_metadata(request: Request):
 @app.post("/register", status_code=201)
 async def register(request: Request):
     """OAuth 2.0 Dynamic Client Registration (RFC 7591)."""
-    if config.is_app_service:
-        # Azure Easy Auth - client registration not supported
-        return Response(
-            content=json.dumps(
-                {
-                    "error": "invalid_client_metadata",
-                    "error_description": "Dynamic client registration not supported. Use Azure App Registration instead.",
-                }
-            ),
-            status_code=400,
-            media_type="application/json",
-        )
-
-    # Local development - implement basic client registration for testing
     try:
         client_data = await request.json()
     except:
@@ -786,7 +773,7 @@ async def register(request: Request):
             media_type="application/json",
         )
 
-    # Generate a simple client_id for testing
+    # Generate a client_id for the client
     import secrets
 
     client_id = f"mcp_{secrets.token_urlsafe(16)}"
