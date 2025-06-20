@@ -513,10 +513,10 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
-# Add request logging middleware
+# Add COMPREHENSIVE request logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log all incoming HTTP requests with structured logging."""
+    """Log ALL incoming HTTP requests with FULL details."""
     start_time = time.time()
 
     # Generate or get trace ID
@@ -525,20 +525,50 @@ async def log_requests(request: Request, call_next):
         trace_id = str(secrets.token_hex(8))
         set_trace_id(trace_id)
 
-    # Log request details (PII will be redacted by processor)
+    # Read request body
+    body_bytes = await request.body()
+    body_str = body_bytes.decode("utf-8") if body_bytes else "<empty>"
+
+    # Log EVERYTHING about the request
     logger.debug(
-        f"HTTP {request.method} {request.url.path} from "
-        f"{request.client.host if request.client else 'unknown'}"
+        f"\n{'=' * 80}\n"
+        f"INCOMING REQUEST - {trace_id}\n"
+        f"{'=' * 80}\n"
+        f"Time: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"Method: {request.method}\n"
+        f"URL: {request.url}\n"
+        f"Path: {request.url.path}\n"
+        f"Query: {request.url.query}\n"
+        f"Client: {request.client}\n"
+        f"Headers:\n"
     )
 
+    # Log all headers
+    for header_name, header_value in request.headers.items():
+        logger.debug(f"  {header_name}: {header_value}")
+
+    logger.debug(f"\nBody ({len(body_bytes)} bytes):\n{body_str}\n{'=' * 80}")
+
+    # Create new request with body for downstream handlers
+    async def receive():
+        return {"type": "http.request", "body": body_bytes}
+
+    request._receive = receive
+
     # Process request
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        logger.error(f"ERROR processing request: {e}", exc_info=True)
+        raise
 
     # Log response details
     process_time = time.time() - start_time
     logger.debug(
-        f"HTTP {request.method} {request.url.path} completed with "
-        f"status {response.status_code} in {process_time:.3f}s"
+        f"\nRESPONSE - {trace_id}\n"
+        f"Status: {response.status_code}\n"
+        f"Time: {process_time:.3f}s\n"
+        f"{'=' * 80}\n"
     )
 
     return response
@@ -588,6 +618,195 @@ async def root_post(request: Request):
 
     # Claude Desktop is trying to POST to root - handle it as MCP protocol
     return await mcp_endpoint(request)
+
+
+# OAuth endpoints ONLY for local development / Claude Desktop
+if not config.is_app_service:  # Only enable OAuth in local dev
+
+    @app.get("/.well-known/openid-configuration")
+    async def openid_configuration(request: Request):
+        """OpenID Connect discovery endpoint - LOCAL DEV ONLY."""
+        base_url = get_base_url_from_request(request)
+        return {
+            "issuer": base_url,
+            "authorization_endpoint": f"{base_url}/authorize",
+            "token_endpoint": f"{base_url}/token",
+            "userinfo_endpoint": f"{base_url}/userinfo",
+            "jwks_uri": f"{base_url}/.well-known/jwks.json",
+            "response_types_supported": ["code", "token", "id_token"],
+            "subject_types_supported": ["public"],
+            "id_token_signing_alg_values_supported": ["RS256"],
+            "scopes_supported": ["openid", "profile", "email"],
+            "token_endpoint_auth_methods_supported": [
+                "client_secret_post",
+                "client_secret_basic",
+            ],
+            "claims_supported": ["sub", "name", "email", "preferred_username"],
+            "code_challenge_methods_supported": ["S256"],
+        }
+
+    # TODO: Add /authorize, /token, /callback endpoints for local OAuth flow
+
+
+# OAuth discovery endpoints for both local dev and Azure Easy Auth
+@app.get("/.well-known/oauth-protected-resource")
+async def oauth_protected_resource_metadata(request: Request):
+    """OAuth 2.0 Protected Resource Metadata (RFC9728)."""
+    base_url = get_base_url_from_request(request)
+
+    if config.is_app_service:
+        # Azure Easy Auth - point to Azure's authorization server
+        authorization_servers = [
+            f"https://login.microsoftonline.com/{config.tenant_id}/v2.0"
+            if config.tenant_id
+            else "https://login.microsoftonline.com/common/v2.0"
+        ]
+    else:
+        # Local development - point to our server's authorization server
+        authorization_servers = [
+            f"{base_url}/.well-known/oauth-authorization-server"
+        ]
+
+    return {
+        "resource": base_url,
+        "authorization_servers": authorization_servers,
+        "bearer_methods_supported": ["header"],
+        "resource_signing_alg_values_supported": ["RS256"],
+    }
+
+
+@app.get("/.well-known/oauth-authorization-server")
+async def oauth_authorization_server_metadata(request: Request):
+    """OAuth 2.0 Authorization Server Metadata (RFC8414)."""
+    base_url = get_base_url_from_request(request)
+
+    if config.is_app_service:
+        # Azure Easy Auth - return Azure's OAuth endpoints
+        tenant_id = config.tenant_id or "common"
+        return {
+            "issuer": f"https://login.microsoftonline.com/{tenant_id}/v2.0",
+            "authorization_endpoint": f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize",
+            "token_endpoint": f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+            "userinfo_endpoint": "https://graph.microsoft.com/oidc/userinfo",
+            "jwks_uri": f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys",
+            "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code"],
+            "subject_types_supported": ["public"],
+            "id_token_signing_alg_values_supported": ["RS256"],
+            "code_challenge_methods_supported": ["S256"],
+            "scopes_supported": [
+                "openid",
+                "profile",
+                "email",
+                "User.Read",
+                f"api://{config.client_id}/mcp:read"
+                if config.client_id
+                else "mcp:read",
+                f"api://{config.client_id}/mcp:write"
+                if config.client_id
+                else "mcp:write",
+                f"api://{config.client_id}/mcp:execute"
+                if config.client_id
+                else "mcp:execute",
+            ],
+            "token_endpoint_auth_methods_supported": [
+                "client_secret_post",
+                "none",
+            ],
+            "claims_supported": [
+                "sub",
+                "name",
+                "email",
+                "preferred_username",
+                "aud",
+                "iss",
+                "iat",
+                "exp",
+            ],
+        }
+    else:
+        # Local development - return our server's OAuth endpoints
+        return {
+            "issuer": base_url,
+            "authorization_endpoint": f"{base_url}/authorize",
+            "token_endpoint": f"{base_url}/token",
+            "registration_endpoint": f"{base_url}/register",
+            "userinfo_endpoint": f"{base_url}/userinfo",
+            "jwks_uri": f"{base_url}/.well-known/jwks.json",
+            "response_types_supported": ["code", "token"],
+            "grant_types_supported": ["authorization_code", "implicit"],
+            "subject_types_supported": ["public"],
+            "id_token_signing_alg_values_supported": ["HS256"],
+            "code_challenge_methods_supported": ["S256"],
+            "scopes_supported": [
+                "openid",
+                "profile",
+                "email",
+                "mcp:read",
+                "mcp:write",
+                "mcp:execute",
+            ],
+            "token_endpoint_auth_methods_supported": [
+                "client_secret_post",
+                "client_secret_basic",
+                "none",
+            ],
+            "claims_supported": ["sub", "name", "email", "preferred_username"],
+        }
+
+
+@app.post("/register", status_code=201)
+async def register(request: Request):
+    """OAuth 2.0 Dynamic Client Registration (RFC 7591)."""
+    if config.is_app_service:
+        # Azure Easy Auth - client registration not supported
+        return Response(
+            content=json.dumps(
+                {
+                    "error": "invalid_client_metadata",
+                    "error_description": "Dynamic client registration not supported. Use Azure App Registration instead.",
+                }
+            ),
+            status_code=400,
+            media_type="application/json",
+        )
+
+    # Local development - implement basic client registration for testing
+    try:
+        client_data = await request.json()
+    except:
+        return Response(
+            content=json.dumps(
+                {
+                    "error": "invalid_request",
+                    "error_description": "Invalid JSON in request body",
+                }
+            ),
+            status_code=400,
+            media_type="application/json",
+        )
+
+    # Generate a simple client_id for testing
+    import secrets
+
+    client_id = f"mcp_{secrets.token_urlsafe(16)}"
+
+    logger.info(
+        f"Registered new OAuth client: {client_id}, name={client_data.get('client_name')}, redirect_uris={client_data.get('redirect_uris')}"
+    )
+
+    return {
+        "client_id": client_id,
+        "client_secret": "",  # Public client
+        "redirect_uris": client_data.get("redirect_uris", []),
+        "grant_types": ["authorization_code"],
+        "response_types": ["code"],
+        "token_endpoint_auth_method": "none",
+        "application_type": "web",
+        "client_name": client_data.get("client_name"),
+        "client_uri": client_data.get("client_uri"),
+        "scope": client_data.get("scope", "openid profile email"),
+    }
 
 
 @app.get("/health")
@@ -643,6 +862,22 @@ async def health_check():
 
 
 # MCP Protocol Endpoints
+
+
+@app.get("/mcp")
+async def mcp_metadata():
+    """MCP metadata discovery endpoint."""
+    return {
+        "mcp_version": "1.0",
+        "protocol_version": PROTOCOL_VERSION,
+        "server_name": "Telnyx MCP Server",
+        "server_version": __version__,
+        "capabilities": {"tools": True, "resources": True, "logging": True},
+        "auth_required": True,
+        "auth_type": "oauth2"
+        if not config.is_app_service
+        else "azure_easy_auth",
+    }
 
 
 @app.options("/mcp")
@@ -798,9 +1033,58 @@ async def mcp_endpoint(
     )
 
 
+# MUST BE LAST - Catch all unhandled routes
+@app.api_route(
+    "/{path:path}",
+    methods=[
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE",
+        "OPTIONS",
+        "HEAD",
+        "PATCH",
+        "TRACE",
+    ],
+)
+async def catch_all(request: Request, path: str):
+    """Catch all route to log any unhandled requests."""
+    logger.info(
+        f"\nCATCH ALL ROUTE HIT:\n"
+        f"Path: /{path}\n"
+        f"Method: {request.method}\n"
+        f"Headers: {dict(request.headers)}\n"
+    )
+    return JSONResponse(
+        status_code=404, content={"detail": f"Path '/{path}' not found"}
+    )
+
+
 def main():
     """Main entry point for the remote server."""
+    import h11
     import uvicorn
+    from uvicorn.protocols.http.h11_impl import H11Protocol
+
+    # Monkey patch H11Protocol to log invalid requests
+    original_handle_events = H11Protocol.handle_events
+
+    def patched_handle_events(self):
+        try:
+            return original_handle_events(self)
+        except h11.RemoteProtocolError as e:
+            logger.error(
+                f"\n{'=' * 80}\n"
+                f"INVALID HTTP REQUEST DETAILS\n"
+                f"{'=' * 80}\n"
+                f"Client: {self.client}\n"
+                f"Error: {e}\n"
+                f"Raw data received: {self.conn.trailing_data[:1000]}\n"
+                f"{'=' * 80}\n"
+            )
+            raise
+
+    H11Protocol.handle_events = patched_handle_events
 
     uvicorn.run(
         "telnyx_mcp_server.remote.server:app",

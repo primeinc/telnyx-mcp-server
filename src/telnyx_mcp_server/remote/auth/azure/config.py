@@ -2,7 +2,8 @@
 
 from typing import List, Optional
 
-from pydantic import BaseSettings, Field, validator
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings
 
 
 class AzureAuthConfig(BaseSettings):
@@ -13,11 +14,11 @@ class AzureAuthConfig(BaseSettings):
     """
 
     # Azure AD Configuration
-    tenant_id: str = Field(
+    tenant_id: Optional[str] = Field(
         default=None, env="AZURE_TENANT_ID", description="Azure AD tenant ID"
     )
 
-    client_id: str = Field(
+    client_id: Optional[str] = Field(
         default=None,
         env="AZURE_CLIENT_ID",
         description="Azure AD application (client) ID",
@@ -108,12 +109,15 @@ class AzureAuthConfig(BaseSettings):
         description="Client ID of user-assigned managed identity (optional)",
     )
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": False,
+        "extra": "ignore",
+    }
 
-    @validator("allowed_origins", pre=True)
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
     def parse_allowed_origins(cls, v):
         """Parse comma-separated origins string into list."""
         if isinstance(v, str):
@@ -122,7 +126,14 @@ class AzureAuthConfig(BaseSettings):
             ]
         return v
 
-    @validator("auth_enabled", pre=True)
+    @field_validator(
+        "auth_enabled",
+        "auth_enforce",
+        "use_managed_identity",
+        "validate_tokens",
+        mode="before",
+    )
+    @classmethod
     def parse_bool_from_string(cls, v):
         """Parse boolean from string values."""
         if isinstance(v, str):
