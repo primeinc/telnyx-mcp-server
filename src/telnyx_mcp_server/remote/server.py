@@ -1771,11 +1771,13 @@ async def mcp_endpoint(
                     )
             except HTTPException:
                 # According to RFC 6750, return proper OAuth challenge header
+                # Include authorization_uri parameter that Claude looks for
                 auth_header = (
                     'Bearer realm="telnyx-mcp", '
                     'error="invalid_token", '
                     'error_description="Access token is missing or invalid", '
-                    'scope="openid profile email mcp:read mcp:write mcp:execute"'
+                    'scope="openid profile email mcp:read mcp:write mcp:execute", '
+                    f'authorization_uri="{base_url}/.well-known/oauth-authorization-server"'
                 )
                 headers = {
                     "WWW-Authenticate": auth_header,
@@ -1954,11 +1956,13 @@ async def mcp_sse_stream(
         if not current_user:
             # Return 401 with proper OAuth challenge header
             base_url = get_base_url_from_request(request)
+            # Include authorization_uri parameter that Claude looks for
             auth_header = (
                 'Bearer realm="telnyx-mcp", '
                 'error="invalid_token", '
                 'error_description="Access token is missing or invalid", '
-                'scope="openid profile email mcp:read mcp:write mcp:execute"'
+                'scope="openid profile email mcp:read mcp:write mcp:execute", '
+                f'authorization_uri="{base_url}/.well-known/oauth-authorization-server"'
             )
             headers = {
                 "WWW-Authenticate": auth_header,
