@@ -161,7 +161,9 @@ class TelnyxMCPServer:
                     "logging": {},
                     "auth": {
                         "oauth2": True,
-                        "authorizationServers": [base_url],
+                        "authorizationServers": [
+                            f"{base_url}/.well-known/oauth-authorization-server"
+                        ],
                     },
                 },
                 "serverInfo": {
@@ -906,6 +908,13 @@ async def mcp_metadata(request: Request):
             "logging": True,
         },
     }
+
+
+@app.get("/.well-known/mcp-oauth-metadata")
+async def mcp_oauth_metadata(request: Request):
+    """MCP OAuth Metadata endpoint - alias for mcp-metadata."""
+    # Just redirect to the mcp-metadata endpoint
+    return await mcp_metadata(request)
 
 
 # OAuth 2.0 endpoints (simplified for MCP)
