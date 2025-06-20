@@ -243,11 +243,11 @@ async def create_jwt_assertion(
     # The token we got from managed identity IS our client assertion
     # Azure AD with FIC will validate this token and accept it as proof of identity
     logger.info(
-        "Successfully obtained JWT assertion from managed identity",
-        managed_identity_client_id=managed_identity_client_id,
-        client_id=client_id,
-        audience=audience,
-        scope_used=scope,
+        f"Successfully obtained JWT assertion from managed identity. "
+        f"MI Client ID: {managed_identity_client_id}, "
+        f"App Client ID: {client_id}, "
+        f"Audience: {audience}, "
+        f"Scope: {scope}"
     )
 
     return token
