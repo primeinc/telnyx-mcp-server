@@ -863,7 +863,8 @@ async def oauth_authorization_server_metadata(request: Request):
             "issuer": f"https://login.microsoftonline.com/{tenant_id}/v2.0",
             "authorization_endpoint": f"{base_url}/authorize",
             "token_endpoint": f"{base_url}/token",
-            # No registration_endpoint - clients must be pre-registered in Azure AD
+            # Add a registration endpoint that returns pre-configured client info
+            "registration_endpoint": f"{base_url}/register",
             "userinfo_endpoint": "https://graph.microsoft.com/oidc/userinfo",
             "jwks_uri": f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys",
             # CRITICAL: Include client_id so Claude knows what to use
@@ -1146,6 +1147,51 @@ if config.is_app_service:
                         "error_description": "Failed to forward token request",
                     },
                 )
+
+    @app.post("/register", status_code=201)
+    async def register_proxy(request: Request):
+        """Registration endpoint for Azure AD - returns pre-configured client information."""
+        logger.info("OAuth registration endpoint called (Azure AD mode)")
+
+        # Azure AD doesn't support dynamic client registration
+        # Instead, we return our pre-configured client information
+        # This allows Claude to discover our client_id without having to pre-configure it
+
+        try:
+            client_data = await request.json()
+        except:
+            client_data = {}
+
+        logger.info(
+            "Registration request received",
+            client_name=client_data.get("client_name"),
+            redirect_uris=client_data.get("redirect_uris"),
+        )
+
+        # Get the managed identity client ID that we use as the client secret
+        override_client_id = os.getenv(
+            "OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID", ""
+        )
+
+        # Return our pre-configured Azure AD app registration details
+        return {
+            "client_id": config.client_id,
+            "client_secret": override_client_id,  # The managed identity client ID IS the secret!
+            "redirect_uris": client_data.get("redirect_uris", []),
+            "grant_types": ["authorization_code"],
+            "response_types": ["code"],
+            "token_endpoint_auth_method": "client_secret_post",  # We send MI client ID as secret
+            "application_type": "web",
+            "client_name": client_data.get("client_name", "Telnyx MCP Server"),
+            "client_uri": client_data.get("client_uri"),
+            "scope": "openid profile email offline_access",
+            # Additional metadata to help Claude understand our setup
+            "token_endpoint_auth_methods_supported": [
+                "client_secret_post",
+                "none",
+            ],
+            "code_challenge_methods_supported": ["S256"],
+        }
 
 
 @app.get("/health")
