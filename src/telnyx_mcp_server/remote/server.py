@@ -854,7 +854,7 @@ async def oauth_metadata(request: Request):
 @app.get("/.well-known/mcp-oauth-metadata")
 async def mcp_oauth_metadata(request: Request):
     """MCP OAuth 2.0 Metadata endpoint for Claude - alias for standard endpoint."""
-    return await oauth_authorization_server(request)
+    return await oauth_metadata(request)
 
 
 @app.get("/.well-known/openid-configuration")
