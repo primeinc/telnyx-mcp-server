@@ -181,7 +181,7 @@ class TelnyxMCPServer:
                                 "mcp:write",
                                 "mcp:execute",
                             ],
-                            "grantType": "client_credentials",
+                            "grantTypes": ["client_credentials"],
                         },
                         "authorizationServers": [
                             base_url  # Issuer URI
