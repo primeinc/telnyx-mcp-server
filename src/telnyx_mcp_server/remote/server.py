@@ -55,12 +55,25 @@ AZURE_TOKEN_URL = (
 
 # Configure structured logging
 log_level = os.getenv("LOG_LEVEL", "INFO")
-enable_pii_redaction = os.getenv("ENABLE_PII_REDACTION", "true").lower() in (
+enable_pii_redaction_env = os.getenv("ENABLE_PII_REDACTION", "true")
+enable_pii_redaction = enable_pii_redaction_env.lower() in (
     "true",
     "1",
     "yes",
 )
 application_insights_key = os.getenv("APPLICATION_INSIGHTS_KEY")
+
+# DEBUG: Print environment variables at startup
+print(f"🔍 STARTUP DEBUG: LOG_LEVEL={log_level}")
+print(
+    f"🔍 STARTUP DEBUG: ENABLE_PII_REDACTION (raw)={enable_pii_redaction_env}"
+)
+print(
+    f"🔍 STARTUP DEBUG: ENABLE_PII_REDACTION (processed)={enable_pii_redaction}"
+)
+print(
+    f"🔍 STARTUP DEBUG: APPLICATION_INSIGHTS_KEY={'SET' if application_insights_key else 'NOT SET'}"
+)
 
 configure_structlog(
     log_level=log_level,
@@ -1727,17 +1740,21 @@ async def mcp_endpoint(
                     )
             except HTTPException:
                 # According to MCP spec and RFC 6750, return proper OAuth challenge header
+                auth_header = (
+                    f"Bearer "
+                    f'authorization_uri="{base_url}/authorize", '
+                    f'token_uri="{base_url}/token", '
+                    f'registration_uri="{base_url}/register", '
+                    f'scope="openid profile email mcp:read mcp:write mcp:execute"'
+                )
                 headers = {
-                    "WWW-Authenticate": (
-                        f"Bearer "
-                        f'authorization_uri="{base_url}/authorize", '
-                        f'token_uri="{base_url}/token", '
-                        f'registration_uri="{base_url}/register", '
-                        f'scope="openid profile email mcp:read mcp:write mcp:execute"'
-                    ),
+                    "WWW-Authenticate": auth_header,
                     "Cache-Control": "no-store",
                     "Access-Control-Expose-Headers": "WWW-Authenticate",  # For CORS
                 }
+
+                # DEBUG: Log the exact WWW-Authenticate header being sent
+                logger.info(f"🔍 SENDING WWW-Authenticate: {auth_header}")
 
                 return Response(
                     content="",  # Empty body - critical for MCP clients
@@ -1885,17 +1902,23 @@ async def mcp_sse_stream(
         if not current_user:
             # Return 401 with proper OAuth challenge header
             base_url = get_base_url_from_request(request)
+            auth_header = (
+                f"Bearer "
+                f'authorization_uri="{base_url}/authorize", '
+                f'token_uri="{base_url}/token", '
+                f'registration_uri="{base_url}/register", '
+                f'scope="openid profile email mcp:read mcp:write mcp:execute"'
+            )
             headers = {
-                "WWW-Authenticate": (
-                    f"Bearer "
-                    f'authorization_uri="{base_url}/authorize", '
-                    f'token_uri="{base_url}/token", '
-                    f'registration_uri="{base_url}/register", '
-                    f'scope="openid profile email mcp:read mcp:write mcp:execute"'
-                ),
+                "WWW-Authenticate": auth_header,
                 "Cache-Control": "no-store",
                 "Access-Control-Expose-Headers": "WWW-Authenticate",  # For CORS
             }
+
+            # DEBUG: Log the exact WWW-Authenticate header being sent
+            logger.info(
+                f"🔍 SENDING WWW-Authenticate (GET /mcp): {auth_header}"
+            )
 
             return Response(
                 content="",  # Empty body - critical for MCP clients
@@ -1905,17 +1928,21 @@ async def mcp_sse_stream(
     except Exception:
         # Any auth error should result in proper OAuth challenge
         base_url = get_base_url_from_request(request)
+        auth_header = (
+            f"Bearer "
+            f'authorization_uri="{base_url}/authorize", '
+            f'token_uri="{base_url}/token", '
+            f'registration_uri="{base_url}/register", '
+            f'scope="openid profile email mcp:read mcp:write mcp:execute"'
+        )
         headers = {
-            "WWW-Authenticate": (
-                f"Bearer "
-                f'authorization_uri="{base_url}/authorize", '
-                f'token_uri="{base_url}/token", '
-                f'registration_uri="{base_url}/register", '
-                f'scope="openid profile email mcp:read mcp:write mcp:execute"'
-            ),
+            "WWW-Authenticate": auth_header,
             "Cache-Control": "no-store",
             "Access-Control-Expose-Headers": "WWW-Authenticate",  # For CORS
         }
+
+        # DEBUG: Log the exact WWW-Authenticate header being sent
+        logger.info(f"🔍 SENDING WWW-Authenticate (EXCEPTION): {auth_header}")
 
         return Response(
             content="",  # Empty body - critical for MCP clients
