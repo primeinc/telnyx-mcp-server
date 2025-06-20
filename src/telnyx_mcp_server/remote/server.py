@@ -547,13 +547,11 @@ async def log_requests(request: Request, call_next):
 @app.get("/")
 async def root(
     request: Request,
-    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Root endpoint - handles both server info and SSE streams based on Accept header."""
     logger.info(
         "ROOT GET endpoint called",
         url=str(request.url),
-        current_user=current_user,
         accept=request.headers.get("accept", "None"),
         client_ip=request.headers.get(
             "x-client-ip", request.client.host if request.client else "unknown"
@@ -1175,10 +1173,28 @@ async def token(request: Request):
 
 
 @app.get("/userinfo")
-async def userinfo(user: Dict[str, Any] = Depends(get_current_user)):
+async def userinfo(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(
+        HTTPBearer(auto_error=False)
+    ),
+):
     """OpenID Connect UserInfo endpoint."""
+    # Get user from Built-in Auth or JWT token
+    user = AuthService.extract_user_from_header(request)
+    if not user and credentials:
+        # Fall back to JWT token from MSAL
+        token = credentials.credentials
+        user = AuthService.decode_jwt_token(token)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
     return {
-        "sub": user.get("sub"),
+        "sub": user.get("id") or user.get("sub"),
         "email": user.get("email"),
         "name": user.get("name"),
         "email_verified": True,
