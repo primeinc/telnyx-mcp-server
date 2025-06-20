@@ -853,8 +853,8 @@ async def oauth_authorization_server_metadata(request: Request):
         tenant_id = config.tenant_id or "common"
         return {
             "issuer": f"https://login.microsoftonline.com/{tenant_id}/v2.0",
-            "authorization_endpoint": f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize",
-            "token_endpoint": f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+            "authorization_endpoint": f"{base_url}/authorize",
+            "token_endpoint": f"{base_url}/token",
             # No registration_endpoint - clients must be pre-registered in Azure AD
             "userinfo_endpoint": "https://graph.microsoft.com/oidc/userinfo",
             "jwks_uri": f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys",
