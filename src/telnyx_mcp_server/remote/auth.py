@@ -121,8 +121,10 @@ class AuthService:
         return f"{auth_url}?{query_string}"
 
     @staticmethod
-    def create_jwt_token(user_data: Dict[str, Any]) -> str:
-        """Create JWT token for authenticated user"""
+    def create_jwt_token(
+        user_data: Dict[str, Any], audience: Optional[str] = None
+    ) -> str:
+        """Create JWT token for authenticated user with audience claim"""
         payload = {
             "sub": user_data.get("id"),
             "email": user_data.get("mail")
@@ -130,7 +132,14 @@ class AuthService:
             "name": user_data.get("displayName"),
             "exp": datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS),
             "iat": datetime.utcnow(),
+            "iss": os.getenv(
+                "BASE_URL", "https://telnyx-mcp-server.azurewebsites.net"
+            ),
         }
+
+        # Add audience if provided (RFC 8707 - resource parameter)
+        if audience:
+            payload["aud"] = audience
 
         return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 

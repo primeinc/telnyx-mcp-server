@@ -692,23 +692,14 @@ async def oauth_protected_resource_metadata(request: Request):
         base_url = str(request.base_url).rstrip("/")
 
     response = {
-        "resource": f"{base_url}/mcp",  # Point to the MCP endpoint specifically
-        "authorization_servers": [base_url],  # We are the authorization server
-        "scopes_supported": [
-            "openid",
-            "profile",
-            "email",
-            "mcp:read",
-            "mcp:write",
-            "mcp:execute",
-        ],
+        "resource": base_url,  # The base URL of our MCP server
+        "authorization_servers": [
+            f"{base_url}/.well-known/oauth-authorization-server"
+        ],  # We act as authorization server, proxying to Azure AD
         "bearer_methods_supported": ["header"],
         "resource_signing_alg_values_supported": [
             "HS256"
-        ],  # Changed to match our JWT signing
-        "resource_documentation": f"{base_url}/docs",
-        "resource_policy_uri": f"{base_url}/privacy",
-        "resource_tos_uri": f"{base_url}/terms",
+        ],  # We use HS256 for our JWTs
     }
 
     logger.info(f"Returning metadata: {json.dumps(response, indent=2)}")
@@ -964,6 +955,7 @@ async def authorize(
     state: Optional[str] = None,
     code_challenge: Optional[str] = None,
     code_challenge_method: Optional[str] = "S256",
+    resource: Optional[str] = None,  # RFC 8707 Resource Indicators
 ):
     """OAuth 2.0 Authorization endpoint - initiates the two-layer OAuth flow."""
     # For public clients like Claude Desktop, accept any client_id
@@ -995,12 +987,17 @@ async def authorize(
     # Generate a unique state for Azure AD if not provided
     azure_state = state or secrets.token_urlsafe(32)
 
+    # Log the resource parameter if provided (RFC 8707)
+    if resource:
+        logger.info(f"Resource parameter: {resource}")
+
     # Create a session to track this OAuth flow
     session_id = auth_store.create_session(
         state=azure_state,
         redirect_uri=redirect_uri,
         pkce_challenge=code_challenge,
         pkce_method=code_challenge_method,
+        resource=resource,  # Store for validation during token exchange
     )
 
     logger.info(
@@ -1029,6 +1026,7 @@ async def token(request: Request):
     grant_type = form_data.get("grant_type")
     client_id = form_data.get("client_id")
     code_verifier = form_data.get("code_verifier")  # PKCE
+    resource = form_data.get("resource")  # RFC 8707 Resource Indicators
 
     logger.info(f"grant_type: {grant_type}")
     logger.info(f"client_id: {client_id}")
@@ -1144,7 +1142,9 @@ async def token(request: Request):
         user_info = auth_code_data.user_info
         logger.info(f"Creating JWT for user: {user_info}")
 
-        jwt_token = AuthService.create_jwt_token(user_info)
+        # Use the resource parameter as audience if provided (RFC 8707)
+        audience = resource or getattr(auth_code_data, "resource", None)
+        jwt_token = AuthService.create_jwt_token(user_info, audience=audience)
 
         logger.info(f"JWT token created successfully")
         logger.info(f"Token (first 50 chars): {jwt_token[:50]}...")
@@ -1304,6 +1304,7 @@ async def oauth_callback(
             redirect_uri=session.redirect_uri if session else None,
             pkce_challenge=session.pkce_challenge if session else None,
             pkce_method=session.pkce_method if session else None,
+            resource=session.resource if session else None,
         )
 
         logger.info(f"Generated MCP auth code: {mcp_auth_code[:8]}...")
@@ -1462,7 +1463,31 @@ async def register(request: Request):
 
 
 # MCP Protocol Endpoints
-# OPTIONS handling removed - CORS middleware handles preflight requests
+
+
+# Add explicit OPTIONS handlers for critical endpoints
+@app.options("/mcp")
+async def mcp_options():
+    """Handle CORS preflight for /mcp endpoint."""
+    return Response(status_code=200)
+
+
+@app.options("/authorize")
+async def authorize_options():
+    """Handle CORS preflight for /authorize endpoint."""
+    return Response(status_code=200)
+
+
+@app.options("/token")
+async def token_options():
+    """Handle CORS preflight for /token endpoint."""
+    return Response(status_code=200)
+
+
+@app.options("/.well-known/{path:path}")
+async def wellknown_options():
+    """Handle CORS preflight for .well-known endpoints."""
+    return Response(status_code=200)
 
 
 @app.post("/mcp")
@@ -1514,35 +1539,18 @@ async def mcp_endpoint(
                         detail="Authentication required",
                     )
             except HTTPException:
+                # According to MCP spec and RFC 9728, return ONLY HTTP headers, no body
                 headers = {
-                    "WWW-Authenticate": f'Bearer realm="MCP Server", resource_metadata_uri="{base_url}/.well-known/oauth-protected-resource"',
-                    "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"',
+                    "WWW-Authenticate": f'Bearer resource_metadata="{base_url}/.well-known/oauth-protected-resource"',
+                    "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth2-authorization-server"',
+                    "Cache-Control": "no-store",
+                    "Access-Control-Expose-Headers": "WWW-Authenticate",  # For CORS
                 }
 
-                # Determine response ID for error
-                response_id = None
-                if isinstance(message, dict):
-                    response_id = message.get("id")
-
                 return Response(
-                    content=json.dumps(
-                        {
-                            "jsonrpc": "2.0",
-                            "id": response_id,
-                            "error": {
-                                "code": -32000,
-                                "message": "Authentication required",
-                                "data": {
-                                    "type": "oauth2",
-                                    "authorization_url": f"{base_url}/authorize",
-                                    "metadata_url": f"{base_url}/.well-known/oauth-authorization-server",
-                                },
-                            },
-                        }
-                    ),
+                    content="",  # Empty body - critical for MCP clients
                     status_code=401,
                     headers=headers,
-                    media_type="application/json",
                 )
 
         # Comprehensive logging
@@ -1690,30 +1698,17 @@ async def mcp_sse_stream(
     if not current_user:
         base_url = get_base_url_from_request(request)
         headers = {
-            "WWW-Authenticate": f'Bearer realm="MCP Server", resource_metadata_uri="{base_url}/.well-known/oauth-protected-resource"',
-            "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth-authorization-server"',
+            "WWW-Authenticate": f'Bearer resource_metadata="{base_url}/.well-known/oauth-protected-resource"',
+            "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth2-authorization-server"',
+            "Cache-Control": "no-store",
+            "Access-Control-Expose-Headers": "WWW-Authenticate",  # For CORS
         }
 
-        # Return the same response as POST /mcp for consistency
+        # Return empty 401 - no JSON-RPC error in body
         return Response(
-            content=json.dumps(
-                {
-                    "jsonrpc": "2.0",
-                    "id": None,
-                    "error": {
-                        "code": -32000,
-                        "message": "Authentication required",
-                        "data": {
-                            "type": "oauth2",
-                            "authorization_url": f"{base_url}/authorize",
-                            "metadata_url": f"{base_url}/.well-known/oauth-authorization-server",
-                        },
-                    },
-                }
-            ),
+            content="",  # Empty body - critical for MCP clients
             status_code=401,
             headers=headers,
-            media_type="application/json",
         )
 
     # Get session ID if provided

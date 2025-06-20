@@ -25,6 +25,7 @@ class AuthCodeData:
     redirect_uri: Optional[str] = None
     pkce_challenge: Optional[str] = None
     pkce_method: Optional[str] = None
+    resource: Optional[str] = None  # RFC 8707 Resource Indicators
 
 
 @dataclass
@@ -37,6 +38,7 @@ class SessionData:
     created_at: float = field(default_factory=time.time)
     pkce_challenge: Optional[str] = None
     pkce_method: Optional[str] = None
+    resource: Optional[str] = None  # RFC 8707 Resource Indicators
 
 
 class AuthStore:
@@ -66,6 +68,7 @@ class AuthStore:
         redirect_uri: Optional[str] = None,
         pkce_challenge: Optional[str] = None,
         pkce_method: Optional[str] = None,
+        resource: Optional[str] = None,
     ) -> str:
         """Create a new authorization code.
 
@@ -88,6 +91,7 @@ class AuthStore:
             redirect_uri=redirect_uri,
             pkce_challenge=pkce_challenge,
             pkce_method=pkce_method,
+            resource=resource,
         )
 
         # Clean up expired codes
@@ -148,6 +152,7 @@ class AuthStore:
         redirect_uri: Optional[str] = None,
         pkce_challenge: Optional[str] = None,
         pkce_method: Optional[str] = None,
+        resource: Optional[str] = None,
     ) -> str:
         """Create a new OAuth session.
 
@@ -163,6 +168,7 @@ class AuthStore:
             created_at=time.time(),
             pkce_challenge=pkce_challenge,
             pkce_method=pkce_method,
+            resource=resource,
         )
 
         # Clean up expired sessions

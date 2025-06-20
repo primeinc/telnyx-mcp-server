@@ -187,7 +187,7 @@ module web './app/web.bicep' = {
 
       // Environment and Logging
       ENVIRONMENT: environment
-      LOG_LEVEL: environment == 'prod' ? 'WARNING' : environment == 'staging' ? 'INFO' : 'DEBUG'
+      LOG_LEVEL: environment == 'prod' ? 'WARNING' : 'DEBUG'
       ENABLE_PII_REDACTION: environment == 'prod' ? 'true' : 'false'
 
       // Redis Configuration
@@ -202,7 +202,7 @@ module web './app/web.bicep' = {
       ENABLE_ORYX_BUILD: 'true'
       PYTHON_VERSION: '3.11'
       PYTHON_ENABLE_GUNICORN_MULTIWORKERS: 'true'
-      GUNICORN_CMD_ARGS: environment == 'prod' ? '--log-level warning' : environment == 'staging' ? '--log-level warning' : '--log-level debug'
+      GUNICORN_CMD_ARGS: environment == 'prod' ? '--log-level warning' : '--log-level debug'
       WEBSITES_PORT: '8000'
       WEBSITE_RUN_FROM_PACKAGE: '0'  // Normal deployment with extraction
       Oryx_EnablePythonNixAlias: 'true'  // Create python -> python3 symlink
