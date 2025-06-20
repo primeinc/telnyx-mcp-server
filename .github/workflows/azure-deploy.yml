@@ -109,7 +109,7 @@ jobs:
       id: get-webapp-name
       run: |
         # Get the resource group name based on environment
-        RG_NAME="rg-${{ needs.determine-environment.outputs.environment }}"
+        RG_NAME="rg-telnyxmcp-${{ needs.determine-environment.outputs.environment }}-001"
 
         # Get the web app name from the resource group
         WEBAPP_NAME=$(az webapp list --resource-group "$RG_NAME" -o json | jq -r '.[] | select(.tags."azd-service-name"=="web") | .name')

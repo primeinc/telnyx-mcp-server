@@ -48,15 +48,37 @@ resource githubApp 'Microsoft.Graph/applications@v1.0' = {
     description: 'GitHub Actions for pull requests'
   }
 
-  // Create federated identity credential for environments
-  resource envFIC 'federatedIdentityCredentials@v1.0' = {
-    name: '${githubApp.uniqueName}/github-environment'
+  // Create federated identity credential for production environment
+  resource prodEnvFIC 'federatedIdentityCredentials@v1.0' = {
+    name: '${githubApp.uniqueName}/github-environment-production'
     audiences: [
       microsoftEntraAudience
     ]
     issuer: githubOIDCProvider
     subject: 'repo:${gitHubOwner}/${gitHubRepo}:environment:production'
     description: 'GitHub Actions for production environment'
+  }
+
+  // Create federated identity credential for staging environment
+  resource stagingEnvFIC 'federatedIdentityCredentials@v1.0' = {
+    name: '${githubApp.uniqueName}/github-environment-staging'
+    audiences: [
+      microsoftEntraAudience
+    ]
+    issuer: githubOIDCProvider
+    subject: 'repo:${gitHubOwner}/${gitHubRepo}:environment:staging'
+    description: 'GitHub Actions for staging environment'
+  }
+
+  // Create federated identity credential for development environment
+  resource devEnvFIC 'federatedIdentityCredentials@v1.0' = {
+    name: '${githubApp.uniqueName}/github-environment-development'
+    audiences: [
+      microsoftEntraAudience
+    ]
+    issuer: githubOIDCProvider
+    subject: 'repo:${gitHubOwner}/${gitHubRepo}:environment:development'
+    description: 'GitHub Actions for development environment'
   }
 }
 
