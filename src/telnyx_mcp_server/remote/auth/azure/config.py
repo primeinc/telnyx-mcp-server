@@ -26,7 +26,7 @@ class AzureAuthConfig(BaseSettings):
 
     # Easy Auth Configuration
     auth_enabled: bool = Field(
-        default=True,
+        default=False,
         env="WEBSITE_AUTH_ENABLED",
         description="Whether Azure Easy Auth is enabled (set by App Service)",
     )
@@ -116,6 +116,29 @@ class AzureAuthConfig(BaseSettings):
         "extra": "ignore",
     }
 
+    def __init__(self, **data):
+        """Custom initialization to handle WEBSITE_AUTH_ENABLED directly."""
+        import os
+
+        # Override auth_enabled with direct environment variable check
+        website_auth_enabled = os.getenv("WEBSITE_AUTH_ENABLED", "").lower()
+        if website_auth_enabled in ("true", "1", "yes", "on"):
+            data["auth_enabled"] = True
+            print(
+                f"DEBUG: __init__ override - WEBSITE_AUTH_ENABLED='{os.getenv('WEBSITE_AUTH_ENABLED')}' -> auth_enabled=True"
+            )
+        elif website_auth_enabled:
+            data["auth_enabled"] = False
+            print(
+                f"DEBUG: __init__ override - WEBSITE_AUTH_ENABLED='{os.getenv('WEBSITE_AUTH_ENABLED')}' -> auth_enabled=False"
+            )
+        else:
+            print(
+                f"DEBUG: __init__ no override - WEBSITE_AUTH_ENABLED not set or empty"
+            )
+
+        super().__init__(**data)
+
     @field_validator("allowed_origins", mode="before")
     @classmethod
     def parse_allowed_origins(cls, v):
@@ -134,20 +157,34 @@ class AzureAuthConfig(BaseSettings):
         mode="before",
     )
     @classmethod
-    def parse_bool_from_string(cls, v):
+    def parse_bool_from_string(cls, v, info):
         """Parse boolean from string values."""
         import os
 
         # Debug logging for WEBSITE_AUTH_ENABLED
-        if hasattr(cls, "__name__") and "auth_enabled" in str(v):
+        field_name = (
+            info.field_name if hasattr(info, "field_name") else "unknown"
+        )
+        if field_name == "auth_enabled":
             actual_env_val = os.getenv("WEBSITE_AUTH_ENABLED", "NOT_FOUND")
             print(
-                f"DEBUG: WEBSITE_AUTH_ENABLED env var = '{actual_env_val}', received value = '{v}', type = {type(v)}"
+                f"DEBUG: Field '{field_name}': WEBSITE_AUTH_ENABLED env var = '{actual_env_val}', received value = '{v}', type = {type(v)}"
             )
 
         if isinstance(v, str):
-            return v.lower() in ("true", "1", "yes", "on")
-        return bool(v)
+            result = v.lower() in ("true", "1", "yes", "on")
+            if field_name == "auth_enabled":
+                print(
+                    f"DEBUG: Field '{field_name}': String '{v}' -> bool {result}"
+                )
+            return result
+
+        result = bool(v)
+        if field_name == "auth_enabled":
+            print(
+                f"DEBUG: Field '{field_name}': Non-string {v} ({type(v)}) -> bool {result}"
+            )
+        return result
 
     @property
     def is_production(self) -> bool:
