@@ -171,7 +171,6 @@ class TelnyxMCPServer:
                     "auth": {
                         "type": "oauth2",
                         "oauth2": {
-                            "authorizationEndpoint": f"{base_url}/authorize",
                             "tokenEndpoint": f"{base_url}/token",
                             "registrationEndpoint": f"{base_url}/register",
                             "scopes": [
@@ -182,7 +181,7 @@ class TelnyxMCPServer:
                                 "mcp:write",
                                 "mcp:execute",
                             ],
-                            "pkce": True,
+                            "grantType": "client_credentials",
                         },
                         "authorizationServers": [
                             base_url  # Issuer URI
@@ -753,15 +752,13 @@ async def oauth_metadata(request: Request):
 
     metadata = {
         "issuer": base_url,
-        "authorization_endpoint": f"{base_url}/authorize",
         "token_endpoint": f"{base_url}/token",
-        "userinfo_endpoint": f"{base_url}/userinfo",
         "registration_endpoint": f"{base_url}/register",
         # Note: We use HS256 for JWT signing, not RS256 from Azure
         # Remove jwks_uri to avoid confusion since we don't publish our symmetric key
         # "jwks_uri": f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/discovery/v2.0/keys" if AZURE_TENANT_ID else None,
-        "response_types_supported": ["code"],
-        "grant_types_supported": ["authorization_code", "client_credentials"],
+        "response_types_supported": [],
+        "grant_types_supported": ["client_credentials"],
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["HS256"],
         "scopes_supported": [
@@ -773,8 +770,12 @@ async def oauth_metadata(request: Request):
             "mcp:write",
             "mcp:execute",
         ],
-        "token_endpoint_auth_methods_supported": ["none"],
-        "code_challenge_methods_supported": ["S256"],
+        "token_endpoint_auth_methods_supported": [
+            "none",
+            "client_secret_post",
+            "client_secret_basic",
+        ],
+        "code_challenge_methods_supported": [],
         "claims_supported": ["sub", "email", "name", "exp", "iat"],
         "service_documentation": f"{base_url}/docs",
     }
@@ -819,10 +820,9 @@ async def mcp_oauth_metadata(request: Request):
 
     metadata = {
         "issuer": base_url,
-        "authorization_endpoint": f"{base_url}/authorize",
         "token_endpoint": f"{base_url}/token",
-        "response_types_supported": ["code"],
-        "grant_types_supported": ["authorization_code", "client_credentials"],
+        "registration_endpoint": f"{base_url}/register",
+        "grant_types_supported": ["client_credentials"],
         "scopes_supported": [
             "openid",
             "profile",
@@ -831,7 +831,11 @@ async def mcp_oauth_metadata(request: Request):
             "mcp:write",
             "mcp:execute",
         ],
-        "code_challenge_methods_supported": ["S256"],
+        "token_endpoint_auth_methods_supported": [
+            "none",
+            "client_secret_post",
+            "client_secret_basic",
+        ],
     }
 
     # Add Built-in Auth information when enabled
@@ -864,14 +868,9 @@ async def openid_configuration(request: Request):
 
     return {
         "issuer": base_url,
-        "authorization_endpoint": f"{base_url}/authorize",
         "token_endpoint": f"{base_url}/token",
-        "userinfo_endpoint": f"{base_url}/userinfo",
-        # Note: We use HS256 for JWT signing, not RS256 from Azure
-        # Remove jwks_uri to avoid confusion since we don't publish our symmetric key
-        # "jwks_uri": f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/discovery/v2.0/keys" if AZURE_TENANT_ID else None,
-        "response_types_supported": ["code"],
-        "grant_types_supported": ["authorization_code", "client_credentials"],
+        "registration_endpoint": f"{base_url}/register",
+        "grant_types_supported": ["client_credentials"],
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["HS256"],
         "scopes_supported": [
@@ -882,8 +881,11 @@ async def openid_configuration(request: Request):
             "mcp:write",
             "mcp:execute",
         ],
-        "token_endpoint_auth_methods_supported": ["none"],
-        "code_challenge_methods_supported": ["S256"],
+        "token_endpoint_auth_methods_supported": [
+            "none",
+            "client_secret_post",
+            "client_secret_basic",
+        ],
         "claims_supported": ["sub", "email", "name", "exp", "iat"],
     }
 
@@ -969,81 +971,8 @@ async def oauth_protected_resource(request: Request):
     }
 
 
-# OAuth 2.0 endpoints (simplified for MCP)
-@app.get("/authorize")
-async def authorize(
-    client_id: str,
-    redirect_uri: str,
-    response_type: str = "code",
-    scope: str = "openid profile email",
-    state: Optional[str] = None,
-    code_challenge: Optional[str] = None,
-    code_challenge_method: Optional[str] = "S256",
-    resource: Optional[str] = None,  # RFC 8707 Resource Indicators
-):
-    """OAuth 2.0 Authorization endpoint - initiates the two-layer OAuth flow."""
-    logger.info(f"Authorization request from client_id: {client_id}")
-
-    # Look up the registered client
-    client = auth_store.get_client(client_id)
-    if not client:
-        logger.error(f"Unknown client_id: {client_id}")
-        return Response(content="Invalid client_id", status_code=400)
-
-    # Validate redirect_uri against registered URIs
-    if redirect_uri not in client.redirect_uris:
-        logger.error(
-            f"Invalid redirect_uri: {redirect_uri} not in registered URIs: {client.redirect_uris}"
-        )
-        return Response(content="Invalid redirect_uri", status_code=400)
-
-    # Validate response_type
-    if response_type != "code":
-        return Response(
-            content="Only response_type=code is supported", status_code=400
-        )
-
-    # PKCE is MANDATORY for public clients (RFC 7636)
-    if not code_challenge:
-        logger.error(f"Missing code_challenge from client_id: {client_id}")
-        return Response(
-            content="code_challenge is required for public clients",
-            status_code=400,
-        )
-
-    # Validate code_challenge_method - only S256 allowed for security
-    if code_challenge_method != "S256":
-        logger.error(f"Invalid code_challenge_method: {code_challenge_method}")
-        return Response(
-            content="Only S256 code_challenge_method is supported",
-            status_code=400,
-        )
-
-    # Generate a unique state for Azure AD if not provided
-    azure_state = state or secrets.token_urlsafe(32)
-
-    # Log the resource parameter if provided (RFC 8707)
-    if resource:
-        logger.info(f"Resource parameter: {resource}")
-
-    # Create a session to track this OAuth flow
-    session_id = auth_store.create_session(
-        state=azure_state,
-        redirect_uri=redirect_uri,
-        pkce_challenge=code_challenge,
-        pkce_method=code_challenge_method,
-        resource=resource,  # Store for validation during token exchange
-    )
-
-    logger.info(
-        f"Created OAuth session {session_id[:8]}... for client {client_id}, redirect_uri: {redirect_uri}"
-    )
-
-    # Get Azure AD authorization URL with our generated state
-    auth_url = AuthService.get_authorization_url(azure_state)
-
-    # Redirect to Azure AD
-    return RedirectResponse(url=auth_url, status_code=302)
+# OAuth 2.0 endpoints (client_credentials only)
+# Authorization code flow removed - only supporting client_credentials
 
 
 @app.post("/token")
