@@ -163,6 +163,7 @@ cython_debug/
 *.pid
 server_dev.pid
 server_*.pid
+server.log
 
 # uv
 .venv/

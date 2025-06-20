@@ -1,6 +1,5 @@
 """Remote MCP server implementation for Telnyx using FastAPI."""
 
-import asyncio
 import base64
 from contextlib import asynccontextmanager
 import hashlib
@@ -18,7 +17,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import httpx
-from sse_starlette.sse import EventSourceResponse
 
 # Import existing Telnyx MCP components
 from ..mcp import mcp
@@ -608,7 +606,7 @@ async def log_requests(request: Request, call_next):
 async def root(
     request: Request,
 ):
-    """Root endpoint - handles both server info and SSE streams based on Accept header."""
+    """Root endpoint - returns server info."""
     logger.info(
         "ROOT GET endpoint called",
         url=str(request.url),
@@ -619,14 +617,7 @@ async def root(
     )
     logger.debug(f"Request headers: {dict(request.headers)}")
 
-    # Check if this is an SSE request
-    accept_header = request.headers.get("accept", "")
-    if "text/event-stream" in accept_header:
-        # This is Claude Desktop trying to establish an SSE connection
-        # Redirect to the MCP SSE endpoint
-        return await mcp_sse_stream(request, current_user)
-
-    # Regular GET request - return server info
+    # Return server info
     base_url = os.getenv(
         "BASE_URL", "https://app-web-3ky2b33hy2dpm.azurewebsites.net"
     )
@@ -784,15 +775,17 @@ async def oauth_metadata(request: Request):
 
     metadata = {
         "issuer": base_url,
+        "authorization_endpoint": f"{base_url}/authorize",
         "token_endpoint": f"{base_url}/token",
         "registration_endpoint": f"{base_url}/register",
         # Note: We use HS256 for JWT signing, not RS256 from Azure
         # Remove jwks_uri to avoid confusion since we don't publish our symmetric key
         # "jwks_uri": f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/discovery/v2.0/keys" if AZURE_TENANT_ID else None,
-        "response_types_supported": [],
-        "grant_types_supported": ["client_credentials"],
+        "response_types_supported": ["code"],
+        "grant_types_supported": ["authorization_code"],
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["HS256"],
+        "code_challenge_methods_supported": ["S256"],
         "scopes_supported": [
             "openid",
             "profile",
@@ -807,7 +800,6 @@ async def oauth_metadata(request: Request):
             "client_secret_post",
             "client_secret_basic",
         ],
-        "code_challenge_methods_supported": [],
         "claims_supported": ["sub", "email", "name", "exp", "iat"],
         "service_documentation": f"{base_url}/docs",
     }
@@ -825,63 +817,6 @@ async def oauth_metadata(request: Request):
             "oauth2_authorization_code",
             "azure_builtin_auth",
         ]
-
-    return metadata
-
-
-@app.get("/.well-known/oauth-authorization-server")
-async def oauth_authorization_server(request: Request):
-    """OAuth 2.0 Authorization Server Metadata endpoint (RFC 8414).
-
-    This is the standard OAuth discovery endpoint that clients should use
-    when following the Link header from a 401 response.
-    """
-    # Get base URL from request, handling proxy headers
-    forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()
-    forwarded_host = request.headers.get(
-        "x-forwarded-host"
-    ) or request.headers.get("host")
-
-    if forwarded_proto and forwarded_host:
-        # Running behind a proxy (like Azure App Service)
-        base_url = f"{forwarded_proto}://{forwarded_host}"
-    else:
-        # Direct access
-        base_url = str(request.base_url).rstrip("/")
-
-    # Check if running with Built-in Auth enabled
-    builtin_auth_enabled = (
-        os.getenv("WEBSITE_AUTH_ENABLED", "false").lower() == "true"
-    )
-
-    metadata = {
-        "issuer": base_url,
-        "token_endpoint": f"{base_url}/token",
-        "registration_endpoint": f"{base_url}/register",
-        "grant_types_supported": ["client_credentials"],
-        "scopes_supported": [
-            "openid",
-            "profile",
-            "email",
-            "mcp:read",
-            "mcp:write",
-            "mcp:execute",
-        ],
-        "token_endpoint_auth_methods_supported": [
-            "none",
-            "client_secret_post",
-            "client_secret_basic",
-        ],
-    }
-
-    # Add Built-in Auth information when enabled
-    if builtin_auth_enabled:
-        metadata["azure_builtin_auth"] = {
-            "enabled": True,
-            "login_endpoint": f"{base_url}/.auth/login/aad",
-            "logout_endpoint": f"{base_url}/.auth/logout",
-            "description": "Azure App Service Built-in Authentication is enabled. Browser-based clients can use the login endpoint directly.",
-        }
 
     return metadata
 
@@ -976,38 +911,7 @@ async def mcp_metadata(request: Request):
     }
 
 
-@app.get("/.well-known/oauth-protected-resource")
-async def oauth_protected_resource(request: Request):
-    """OAuth 2.0 Protected Resource Metadata (RFC 8897).
-
-    This tells clients about the authorization server for this protected resource.
-    """
-    # Get base URL from request
-    forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()
-    forwarded_host = request.headers.get(
-        "x-forwarded-host"
-    ) or request.headers.get("host")
-
-    if forwarded_proto and forwarded_host:
-        base_url = f"{forwarded_proto}://{forwarded_host}"
-    else:
-        base_url = str(request.base_url).rstrip("/")
-
-    return {
-        "resource": base_url,
-        "authorization_servers": [
-            base_url  # Our server is the authorization server (bridge)
-        ],
-        "bearer_methods_supported": ["header"],
-        "resource_signing_alg_values_supported": ["HS256"],
-        "resource_documentation": f"{base_url}/docs",
-        "resource_policy_uri": f"{base_url}/privacy",
-        "resource_tos_uri": f"{base_url}/terms",
-    }
-
-
-# OAuth 2.0 endpoints (client_credentials only)
-# Authorization code flow removed - only supporting client_credentials
+# OAuth 2.0 endpoints
 
 
 @app.post("/token")
@@ -1639,7 +1543,8 @@ async def register(request: Request):
     base_url = get_base_url_from_request(request)
 
     # Return the registration response (201 Created is set by status_code parameter)
-    return {
+    # Only include non-null values to avoid validation errors
+    response = {
         "client_id": registration.client_id,
         "client_secret": registration.client_secret,  # Empty for public clients
         "registration_access_token": "",  # We don't use registration access tokens
@@ -1652,18 +1557,33 @@ async def register(request: Request):
         "token_endpoint_auth_method": registration.token_endpoint_auth_method,
         "application_type": "web",
         "token_endpoint_auth_signing_alg": "HS256",  # We use HS256 for JWT signing
-        "client_name": registration.client_name,
-        "client_uri": registration.client_uri,
-        "logo_uri": registration.logo_uri,
-        "scope": registration.scope,
-        "contacts": registration.contacts,
-        "tos_uri": registration.tos_uri,
-        "policy_uri": registration.policy_uri,
-        "jwks_uri": registration.jwks_uri,
-        "jwks": registration.jwks,
-        "software_id": registration.software_id,
-        "software_version": registration.software_version,
     }
+
+    # Only include optional fields if they have non-null values
+    if registration.client_name:
+        response["client_name"] = registration.client_name
+    if registration.client_uri:
+        response["client_uri"] = registration.client_uri
+    if registration.logo_uri:
+        response["logo_uri"] = registration.logo_uri
+    if registration.scope:
+        response["scope"] = registration.scope
+    if registration.contacts:
+        response["contacts"] = registration.contacts
+    if registration.tos_uri:
+        response["tos_uri"] = registration.tos_uri
+    if registration.policy_uri:
+        response["policy_uri"] = registration.policy_uri
+    if registration.jwks_uri:
+        response["jwks_uri"] = registration.jwks_uri
+    if registration.jwks:
+        response["jwks"] = registration.jwks
+    if registration.software_id:
+        response["software_id"] = registration.software_id
+    if registration.software_version:
+        response["software_version"] = registration.software_version
+
+    return response
 
 
 @app.get("/register/{client_id}")
@@ -1733,6 +1653,70 @@ async def authorize_options():
     return Response(status_code=200)
 
 
+@app.get("/authorize")
+async def authorize_endpoint(
+    request: Request,
+    client_id: str,
+    redirect_uri: str,
+    response_type: str = "code",
+    scope: str = "openid profile email mcp:read mcp:write mcp:execute",
+    state: str = None,
+):
+    """OAuth2 authorization endpoint - redirects to Azure AD for user authentication."""
+    logger.info(
+        "Authorization request received",
+        client_id=client_id,
+        redirect_uri=redirect_uri,
+        response_type=response_type,
+        scope=scope,
+        state=state,
+    )
+
+    # Validate client_id exists
+    if not auth_store.get_client(client_id):
+        logger.warning(
+            "Invalid client_id in authorization request", client_id=client_id
+        )
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "invalid_client",
+                "error_description": "Invalid client_id",
+            },
+        )
+
+    # Validate response_type
+    if response_type != "code":
+        logger.warning(
+            "Unsupported response_type", response_type=response_type
+        )
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "unsupported_response_type",
+                "error_description": "Only 'code' response type is supported",
+            },
+        )
+
+    # Build Azure AD authorization URL
+    base_url = get_base_url_from_request(request)
+    azure_auth_url = (
+        f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/oauth2/v2.0/authorize"
+        f"?client_id={AZURE_CLIENT_ID}"
+        f"&response_type=code"
+        f"&redirect_uri={base_url}/auth/callback"
+        f"&scope=openid profile email"
+        f"&state={client_id}|{redirect_uri}|{scope}|{state or ''}"
+        f"&response_mode=query"
+    )
+
+    logger.info(
+        "Redirecting to Azure AD for authentication",
+        azure_auth_url=azure_auth_url,
+    )
+    return RedirectResponse(url=azure_auth_url)
+
+
 @app.options("/token")
 async def token_options():
     """Handle CORS preflight for /token endpoint."""
@@ -1777,14 +1761,11 @@ async def mcp_endpoint(
         logger.debug("REQUEST BODY", body=body_str)
         message = json.loads(body)
 
-        # Determine if this request requires authentication
+        # All requests require authentication
         requires_auth = True
         method = ""
         if isinstance(message, dict):
             method = message.get("method", "")
-            # Allow initialize and notifications/initialized to proceed without auth
-            if method in ["initialize", "notifications/initialized"]:
-                requires_auth = False
 
         # If auth is required, check authentication
         if requires_auth:
@@ -1874,10 +1855,6 @@ async def mcp_endpoint(
             },
         }
         return JSONResponse(error_response)
-    # Check Accept header
-    accept_header = request.headers.get("accept", "application/json")
-    prefers_sse = "text/event-stream" in accept_header
-
     # Get session ID if provided
     session_id = request.headers.get("mcp-session-id")
 
@@ -1922,187 +1899,28 @@ async def mcp_endpoint(
         response_data=response if response else "None (202 already sent)",
     )
 
-    # Check if this contains only responses (no requests)
-    is_batch = isinstance(response, list)
-    contains_requests = False
-
-    if is_batch:
-        for resp in response:
-            if "result" in resp or "error" in resp:
-                # This is a response to a request
-                contains_requests = True
-                break
-    else:
-        if "result" in response or "error" in response:
-            contains_requests = True
-
-    # Return appropriate format
-    if prefers_sse and contains_requests:
-
-        async def event_generator():
-            if is_batch:
-                # Send each response as a separate SSE event
-                for resp in response:
-                    yield {"data": json.dumps(resp)}
-            else:
-                yield {"data": json.dumps(response)}
-
-        headers = {}
-        if session_id:
-            headers["mcp-session-id"] = session_id
-
-        # CORS headers handled by middleware
-        return EventSourceResponse(event_generator(), headers=headers)
-    else:
-        # Return JSON response
-        headers = {}
-        if session_id:
-            headers["mcp-session-id"] = session_id
-
-        # CORS headers handled by middleware
-
-        return Response(
-            content=json.dumps(response),
-            media_type="application/json",
-            headers=headers,
-        )
-
-
-@app.get("/mcp")
-async def mcp_sse_stream(
-    request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(
-        HTTPBearer(auto_error=False)
-    ),
-):
-    """GET endpoint for server-initiated SSE stream."""
-    # LOG EVERYTHING - FULL REQUEST DETAILS
-    logger.debug(
-        "MCP GET /mcp REQUEST RECEIVED",
-        url=str(request.url),
-        method=request.method,
-        client=str(request.client),
-        headers=dict(request.headers),
-    )
-
-    # Check authentication first, before any logging that uses current_user
-    current_user = None
-    try:
-        # First try Built-in Auth header
-        current_user = AuthService.extract_user_from_header(request)
-        if not current_user and credentials:
-            # Fall back to JWT token from MSAL
-            token = credentials.credentials
-            current_user = AuthService.decode_jwt_token(token)
-
-        if not current_user:
-            # Return 401 with proper OAuth challenge header
-            base_url = get_base_url_from_request(request)
-            # Include authorization_uri parameter that Claude looks for
-            # IMPORTANT: Do NOT include error= when no token was provided
-            if credentials and credentials.credentials:
-                # Token was provided but invalid
-                auth_header = (
-                    'Bearer realm="telnyx-mcp", '
-                    'error="invalid_token", '
-                    'error_description="Access token is missing or invalid", '
-                    'scope="openid profile email mcp:read mcp:write mcp:execute", '
-                    f'authorization_uri="{base_url}/.well-known/oauth-authorization-server"'
-                )
-            else:
-                # No token provided - omit error parameter per RFC 6750
-                auth_header = (
-                    'Bearer realm="telnyx-mcp", '
-                    'scope="openid profile email mcp:read mcp:write mcp:execute", '
-                    f'authorization_uri="{base_url}/.well-known/oauth-authorization-server"'
-                )
-            headers = {
-                "WWW-Authenticate": auth_header,
-                "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth2-authorization-server"',
-                "Cache-Control": "no-store",
-                "Access-Control-Expose-Headers": "WWW-Authenticate, Link",  # For CORS
-            }
-
-            # LOG FULL 401 RESPONSE
-            logger.debug(
-                "SENDING 401 UNAUTHORIZED RESPONSE (GET /mcp)",
-                response_headers=headers,
-                response_body="(empty)",
-                status_code=401,
-            )
-
-            return Response(
-                content="",  # Empty body - critical for MCP clients
-                status_code=401,
-                headers=headers,
-            )
-    except Exception:
-        # Any auth error should result in proper OAuth challenge
-        base_url = get_base_url_from_request(request)
-        # No token was provided in this exception case
-        auth_header = (
-            'Bearer realm="telnyx-mcp", '
-            'scope="openid profile email mcp:read mcp:write mcp:execute", '
-            f'authorization_uri="{base_url}/.well-known/oauth-authorization-server"'
-        )
-        headers = {
-            "WWW-Authenticate": auth_header,
-            "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth2-authorization-server"',
-            "Cache-Control": "no-store",
-            "Access-Control-Expose-Headers": "WWW-Authenticate, Link",  # For CORS
-        }
-
-        # DEBUG: Log the exact WWW-Authenticate header being sent
-        logger.info(f"🔍 SENDING WWW-Authenticate (EXCEPTION): {auth_header}")
-
-        return Response(
-            content="",  # Empty body - critical for MCP clients
-            status_code=401,
-            headers=headers,
-        )
-
-    # Comprehensive logging
-    logger.info(
-        "MCP GET endpoint called",
-        url=str(request.url),
-        method=request.method,
-        auth_header=request.headers.get("authorization", "None"),
-        current_user=current_user,
-        accept=request.headers.get("accept", "None"),
-        client_ip=request.headers.get(
-            "x-client-ip", request.client.host if request.client else "unknown"
-        ),
-        session_id=request.headers.get("mcp-session-id", "None"),
-    )
-    # Log all headers separately for debugging
-    logger.debug(f"Request headers: {dict(request.headers)}")
-
-    # Get session ID if provided
-    session_id = request.headers.get("mcp-session-id")
-
-    # Check Accept header
-    accept_header = request.headers.get("accept", "")
-    if "text/event-stream" not in accept_header:
-        return Response(
-            status_code=405,
-            content="Method not allowed - this endpoint requires Accept: text/event-stream",
-        )
-
-    async def event_generator():
-        # For now, just keep the connection open
-        # In a real implementation, this would send server-initiated messages
-        try:
-            while True:
-                await asyncio.sleep(30)  # Send keepalive every 30 seconds
-                yield {"event": "ping", "data": ""}
-        except asyncio.CancelledError:
-            logger.info("SSE stream closed")
-
+    # Return JSON response
     headers = {}
     if session_id:
         headers["mcp-session-id"] = session_id
 
-    return EventSourceResponse(event_generator(), headers=headers)
+    # Log the response being sent
+    logger.debug(
+        "MCP response sent",
+        session_id=session_id,
+        response_size=len(json.dumps(response)) if response else 0,
+        has_result="result" in (response or {}),
+        has_error="error" in (response or {}),
+        is_batch=isinstance(response, list),
+        batch_size=len(response) if isinstance(response, list) else 1,
+        user_email=current_user.get("email") if current_user else "anonymous",
+    )
+
+    return Response(
+        content=json.dumps(response),
+        media_type="application/json",
+        headers=headers,
+    )
 
 
 def main():

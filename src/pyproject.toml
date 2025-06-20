@@ -22,7 +22,6 @@ dependencies = [
     "pyjwt>=2.8.0",
     "python-multipart>=0.0.9",
     "azure-identity>=1.15.0",
-    "sse-starlette>=2.0.0",
     "redis>=4.0.0",
     "structlog>=23.0.0",
     "fakeredis>=2.0.0",
