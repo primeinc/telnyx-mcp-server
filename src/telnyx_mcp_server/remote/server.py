@@ -970,10 +970,20 @@ if not config.is_app_service:  # Only enable OAuth in local dev
 
 
 # OAuth proxy endpoints for Azure AD when running in App Service
+logger.info(
+    "OAuth proxy endpoint registration check",
+    is_app_service=config.is_app_service,
+    client_id=config.client_id,
+    tenant_id=config.tenant_id,
+    environment=config.environment,
+)
+
 if config.is_app_service:
     from urllib.parse import urlencode
 
     import httpx
+
+    logger.info("Registering OAuth proxy endpoints for Azure AD")
 
     @app.get("/authorize")
     async def authorize_proxy(request: Request):
@@ -1105,6 +1115,22 @@ if config.is_app_service:
 
                 logger.info(
                     "Added managed identity client ID as client secret to token request"
+                )
+        else:
+            # No managed identity configured, check for client secret
+            client_secret = os.getenv("AZURE_CLIENT_SECRET")
+            if client_secret:
+                logger.info(
+                    "Using configured client secret for authentication"
+                )
+                form_dict["client_secret"] = client_secret
+
+                # Remove code_verifier if present when using client secret
+                if "code_verifier" in form_dict:
+                    del form_dict["code_verifier"]
+            else:
+                logger.warning(
+                    "No authentication method configured - neither OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID nor AZURE_CLIENT_SECRET is set"
                 )
 
         # Reconstruct body with all parameters
