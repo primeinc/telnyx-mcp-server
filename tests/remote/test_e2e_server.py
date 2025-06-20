@@ -344,9 +344,7 @@ class TestMCPProtocol:
         }
 
         # Mock tool execution
-        mock_call_tool.return_value = MagicMock(
-            text="Tool executed successfully"
-        )
+        mock_call_tool.return_value = MagicMock(text="Tool executed successfully")
 
         request_data = {
             "jsonrpc": "2.0",
@@ -515,9 +513,7 @@ class TestJWTSecurity:
             "params": {},
         }
 
-        response = client.post(
-            "/mcp", json=request_data, headers=tampered_headers
-        )
+        response = client.post("/mcp", json=request_data, headers=tampered_headers)
 
         assert response.status_code == 401
 
@@ -589,9 +585,7 @@ class TestAuthFailureRecovery:
             "params": {},
         }
 
-        response = client.post(
-            "/mcp", json=request_data, headers=expired_headers
-        )
+        response = client.post("/mcp", json=request_data, headers=expired_headers)
         assert response.status_code == 401
 
         # Second call with fresh token
@@ -603,9 +597,7 @@ class TestAuthFailureRecovery:
         }
 
         fresh_headers = {"Authorization": "Bearer fresh.jwt.token"}
-        response = client.post(
-            "/mcp", json=request_data, headers=fresh_headers
-        )
+        response = client.post("/mcp", json=request_data, headers=fresh_headers)
 
         assert response.status_code == 200
 

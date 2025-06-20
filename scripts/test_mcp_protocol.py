@@ -31,9 +31,7 @@ async def test_oauth_metadata_discovery():
                     f"Authorization endpoint: {metadata.get('authorization_endpoint')}"
                 )
                 print(f"Token endpoint: {metadata.get('token_endpoint')}")
-                print(
-                    f"Registration endpoint: {metadata.get('registration_endpoint')}"
-                )
+                print(f"Registration endpoint: {metadata.get('registration_endpoint')}")
                 return True
             else:
                 print(f"Failed to discover metadata: {response.text}")
@@ -105,9 +103,7 @@ async def test_mcp_initialize(token: Optional[str] = None):
             if response.status_code == 200:
                 result = response.json()
                 print("Initialize successful!")
-                print(
-                    f"Protocol version: {result['result']['protocolVersion']}"
-                )
+                print(f"Protocol version: {result['result']['protocolVersion']}")
                 print(
                     f"Server capabilities: {json.dumps(result['result']['capabilities'], indent=2)}"
                 )
@@ -178,9 +174,7 @@ async def test_mcp_tools_list(token: Optional[str] = None):
                 if tools:
                     print("Sample tools:")
                     for tool in tools[:5]:
-                        print(
-                            f"  - {tool['name']}: {tool['description'][:60]}..."
-                        )
+                        print(f"  - {tool['name']}: {tool['description'][:60]}...")
                 return len(tools) > 0
             else:
                 print(f"Tools list failed: {response.text}")
@@ -206,9 +200,7 @@ async def test_mcp_batch_request(token: Optional[str] = None):
 
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(
-                f"{BASE_URL}/mcp", json=batch, headers=headers
-            )
+            response = await client.post(f"{BASE_URL}/mcp", json=batch, headers=headers)
             print(f"Status: {response.status_code}")
 
             if response.status_code == 200:
@@ -318,7 +310,7 @@ async def main():
             tests_passed += 1
 
     # Summary
-    print(f"\n=== Test Summary ===")
+    print("\n=== Test Summary ===")
     print(f"Passed: {tests_passed}/{total_tests}")
 
     if tests_passed == total_tests:

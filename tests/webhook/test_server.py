@@ -120,9 +120,7 @@ def test_webhook_handler_logs_payload(mock_logger, client):
 
     # Check that the logger was called
     mock_logger.debug.assert_called()
-    mock_logger.info.assert_called_with(
-        "Received webhook event: call.initiated"
-    )
+    mock_logger.info.assert_called_with("Received webhook event: call.initiated")
 
     # Check the response
     assert response.status_code == 200

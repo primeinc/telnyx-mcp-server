@@ -15,13 +15,9 @@ from telnyx_mcp_server.tools.embeddings import (
 def mock_service():
     """Create a mock EmbeddingsService."""
     service = MagicMock()
-    service.list_embedded_buckets.return_value = {
-        "data": [{"id": "test-bucket-id"}]
-    }
+    service.list_embedded_buckets.return_value = {"data": [{"id": "test-bucket-id"}]}
     service.embed_url.return_value = {"data": {"bucket": "test-bucket"}}
-    service.create_embeddings.return_value = {
-        "data": {"embeddings": [[0.1, 0.2, 0.3]]}
-    }
+    service.create_embeddings.return_value = {"data": {"embeddings": [[0.1, 0.2, 0.3]]}}
     return service
 
 
@@ -34,9 +30,7 @@ async def test_list_embedded_buckets(mock_get_service, mock_service):
     result = await list_embedded_buckets({"page": 2, "page_size": 10})
 
     mock_get_service.assert_called_once()
-    mock_service.list_embedded_buckets.assert_called_once_with(
-        page=2, page_size=10
-    )
+    mock_service.list_embedded_buckets.assert_called_once_with(page=2, page_size=10)
     assert result == {"data": [{"id": "test-bucket-id"}]}
 
 

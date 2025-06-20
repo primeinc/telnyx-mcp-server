@@ -25,7 +25,7 @@ async def test_redis_auth_store():
 
     store = create_auth_store()
     print(f"   ✅ Store type: {type(store).__name__}")
-    print(f"   ✅ Expected: AuthStore (in-memory for development)")
+    print("   ✅ Expected: AuthStore (in-memory for development)")
 
     # Test 2: Production with Redis URL
     print("\n2. Testing production with Redis URL:")
@@ -46,9 +46,7 @@ async def test_redis_auth_store():
     if "AsyncRedisAuthStore" in type(store).__name__:
         print(f"   ✅ Redis URL configured: {os.environ.get('REDIS_URL')}")
     else:
-        print(
-            f"   ⚠️  Fallback to in-memory (Redis dependencies may not be available)"
-        )
+        print("   ⚠️  Fallback to in-memory (Redis dependencies may not be available)")
 
     # Test 3: Production with USE_REDIS=true but no REDIS_URL
     print("\n3. Testing USE_REDIS=true without REDIS_URL:")
@@ -61,7 +59,7 @@ async def test_redis_auth_store():
 
     store = create_auth_store()
     print(f"   ✅ Store type: {type(store).__name__}")
-    print(f"   ✅ Expected: AuthStore (fallback due to missing REDIS_URL)")
+    print("   ✅ Expected: AuthStore (fallback due to missing REDIS_URL)")
 
     # Test 4: Basic functionality test
     print("\n4. Testing basic auth store functionality:")
@@ -76,7 +74,7 @@ async def test_redis_auth_store():
     if session:
         print(f"   ✅ Retrieved session with state: {session.state}")
     else:
-        print(f"   ❌ Failed to retrieve session")
+        print("   ❌ Failed to retrieve session")
         return False
 
     # Create auth code
@@ -91,16 +89,16 @@ async def test_redis_auth_store():
     # Get auth code
     code_data = store.get_auth_code(auth_code)
     if code_data:
-        print(f"   ✅ Retrieved auth code data")
+        print("   ✅ Retrieved auth code data")
     else:
-        print(f"   ❌ Failed to retrieve auth code")
+        print("   ❌ Failed to retrieve auth code")
         return False
 
     # Delete session
     if store.delete_session(session_id):
-        print(f"   ✅ Deleted session")
+        print("   ✅ Deleted session")
     else:
-        print(f"   ❌ Failed to delete session")
+        print("   ❌ Failed to delete session")
         return False
 
     print("\n✅ All tests passed!")

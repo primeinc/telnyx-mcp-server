@@ -57,9 +57,7 @@ async def test_claude_mcp():
             print(f"Response headers: {dict(response.headers)}")
 
             if response.status_code == 200:
-                if "text/event-stream" in response.headers.get(
-                    "content-type", ""
-                ):
+                if "text/event-stream" in response.headers.get("content-type", ""):
                     print("Got SSE response, reading events...")
                     content = response.text
                     print(f"SSE content: {content[:500]}...")
@@ -90,9 +88,7 @@ async def test_claude_mcp():
                     "params": {},
                 },
             ) as event_source:
-                print(
-                    f"SSE connection status: {event_source.response.status_code}"
-                )
+                print(f"SSE connection status: {event_source.response.status_code}")
 
                 # Read events
                 async for sse in event_source.aiter_sse():
@@ -101,9 +97,7 @@ async def test_claude_mcp():
                     if sse.event == "message":
                         # Parse the JSON-RPC response
                         data = json.loads(sse.data)
-                        print(
-                            f"Parsed response: {json.dumps(data, indent=2)[:500]}..."
-                        )
+                        print(f"Parsed response: {json.dumps(data, indent=2)[:500]}...")
                         break
 
         except Exception as e:

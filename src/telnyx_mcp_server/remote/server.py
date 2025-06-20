@@ -3,7 +3,6 @@
 import asyncio
 import base64
 from contextlib import asynccontextmanager
-from datetime import datetime
 import hashlib
 import json
 import os
@@ -953,9 +952,20 @@ async def authorize(
     resource: Optional[str] = None,  # RFC 8707 Resource Indicators
 ):
     """OAuth 2.0 Authorization endpoint - initiates the two-layer OAuth flow."""
-    # For public clients like Claude Desktop, accept any client_id
-    # In production, you'd validate against registered clients
     logger.info(f"Authorization request from client_id: {client_id}")
+
+    # Look up the registered client
+    client = auth_store.get_client(client_id)
+    if not client:
+        logger.error(f"Unknown client_id: {client_id}")
+        return Response(content="Invalid client_id", status_code=400)
+
+    # Validate redirect_uri against registered URIs
+    if redirect_uri not in client.redirect_uris:
+        logger.error(
+            f"Invalid redirect_uri: {redirect_uri} not in registered URIs: {client.redirect_uris}"
+        )
+        return Response(content="Invalid redirect_uri", status_code=400)
 
     # Validate response_type
     if response_type != "code":
@@ -996,7 +1006,7 @@ async def authorize(
     )
 
     logger.info(
-        f"Created OAuth session {session_id[:8]}... for redirect_uri: {redirect_uri}"
+        f"Created OAuth session {session_id[:8]}... for client {client_id}, redirect_uri: {redirect_uri}"
     )
 
     # Get Azure AD authorization URL with our generated state
@@ -1446,32 +1456,179 @@ async def oauth_callback(
         )
 
 
-@app.post("/register")
+@app.post("/register", status_code=201)
 async def register(request: Request):
-    """OAuth 2.0 Dynamic Client Registration (RFC7591).
+    """OAuth 2.0 Dynamic Client Registration (RFC 7591).
 
-    Since we're using Azure AD, we return our pre-registered app details.
+    This endpoint allows clients like Claude to register dynamically and obtain
+    a unique client_id for use in the OAuth flow.
     """
     try:
         client_data = await request.json()
     except:
-        client_data = {}
+        return Response(
+            content=json.dumps(
+                {
+                    "error": "invalid_request",
+                    "error_description": "Invalid JSON in request body",
+                }
+            ),
+            status_code=400,
+            media_type="application/json",
+        )
 
-    # Return our Azure AD app registration
-    # For public clients, we return an empty string for client_secret
+    # Extract registration parameters
+    redirect_uris = client_data.get("redirect_uris", [])
+    token_endpoint_auth_method = client_data.get(
+        "token_endpoint_auth_method", "none"
+    )
+    grant_types = client_data.get("grant_types", ["authorization_code"])
+    response_types = client_data.get("response_types", ["code"])
+    client_name = client_data.get("client_name")
+    client_uri = client_data.get("client_uri")
+    logo_uri = client_data.get("logo_uri")
+    scope = client_data.get("scope")
+    contacts = client_data.get("contacts", [])
+    tos_uri = client_data.get("tos_uri")
+    policy_uri = client_data.get("policy_uri")
+    jwks_uri = client_data.get("jwks_uri")
+    jwks = client_data.get("jwks")
+    software_id = client_data.get("software_id")
+    software_version = client_data.get("software_version")
+
+    # Validate required fields
+    if not redirect_uris:
+        return Response(
+            content=json.dumps(
+                {
+                    "error": "invalid_request",
+                    "error_description": "redirect_uris is required",
+                }
+            ),
+            status_code=400,
+            media_type="application/json",
+        )
+
+    # For public clients, only "none" is allowed for token_endpoint_auth_method
+    if token_endpoint_auth_method not in [
+        "none",
+        "client_secret_post",
+        "client_secret_basic",
+    ]:
+        return Response(
+            content=json.dumps(
+                {
+                    "error": "invalid_request",
+                    "error_description": f"Unsupported token_endpoint_auth_method: {token_endpoint_auth_method}",
+                }
+            ),
+            status_code=400,
+            media_type="application/json",
+        )
+
+    # Register the client
+    registration = auth_store.register_client(
+        redirect_uris=redirect_uris,
+        token_endpoint_auth_method=token_endpoint_auth_method,
+        grant_types=grant_types,
+        response_types=response_types,
+        client_name=client_name,
+        client_uri=client_uri,
+        logo_uri=logo_uri,
+        scope=scope,
+        contacts=contacts,
+        tos_uri=tos_uri,
+        policy_uri=policy_uri,
+        jwks_uri=jwks_uri,
+        jwks=jwks,
+        software_id=software_id,
+        software_version=software_version,
+    )
+
+    logger.info(
+        f"Registered new OAuth client: {registration.client_id}, "
+        f"name={client_name}, redirect_uris={redirect_uris}"
+    )
+
+    # Get base URL for registration URIs
+    base_url = get_base_url_from_request(request)
+
+    # Return the registration response (201 Created is set by status_code parameter)
     return {
-        "client_id": AZURE_CLIENT_ID,
-        "client_secret": "",  # Empty string for public client
-        "registration_access_token": "",
-        "registration_client_uri": "",
-        "client_id_issued_at": int(datetime.utcnow().timestamp()),
-        "client_secret_expires_at": 0,
-        "redirect_uris": [AZURE_REDIRECT_URI],
-        "grant_types": ["authorization_code"],
-        "response_types": ["code"],
-        "token_endpoint_auth_method": "none",  # Public client
+        "client_id": registration.client_id,
+        "client_secret": registration.client_secret,  # Empty for public clients
+        "registration_access_token": "",  # We don't use registration access tokens
+        "registration_client_uri": f"{base_url}/register/{registration.client_id}",
+        "client_id_issued_at": registration.client_id_issued_at,
+        "client_secret_expires_at": registration.client_secret_expires_at,
+        "redirect_uris": registration.redirect_uris,
+        "grant_types": registration.grant_types,
+        "response_types": registration.response_types,
+        "token_endpoint_auth_method": registration.token_endpoint_auth_method,
         "application_type": "web",
-        "token_endpoint_auth_signing_alg": "RS256",
+        "token_endpoint_auth_signing_alg": "HS256",  # We use HS256 for JWT signing
+        "client_name": registration.client_name,
+        "client_uri": registration.client_uri,
+        "logo_uri": registration.logo_uri,
+        "scope": registration.scope,
+        "contacts": registration.contacts,
+        "tos_uri": registration.tos_uri,
+        "policy_uri": registration.policy_uri,
+        "jwks_uri": registration.jwks_uri,
+        "jwks": registration.jwks,
+        "software_id": registration.software_id,
+        "software_version": registration.software_version,
+    }
+
+
+@app.get("/register/{client_id}")
+async def get_client_registration(client_id: str, request: Request):
+    """Get client registration details.
+
+    This endpoint allows clients to retrieve their registration information.
+    """
+    # Look up the client
+    client = auth_store.get_client(client_id)
+    if not client:
+        return Response(
+            content=json.dumps(
+                {
+                    "error": "invalid_client",
+                    "error_description": "Client not found",
+                }
+            ),
+            status_code=404,
+            media_type="application/json",
+        )
+
+    # Get base URL for registration URIs
+    base_url = get_base_url_from_request(request)
+
+    # Return the registration details
+    return {
+        "client_id": client.client_id,
+        "client_secret": client.client_secret,
+        "registration_access_token": "",
+        "registration_client_uri": f"{base_url}/register/{client.client_id}",
+        "client_id_issued_at": client.client_id_issued_at,
+        "client_secret_expires_at": client.client_secret_expires_at,
+        "redirect_uris": client.redirect_uris,
+        "grant_types": client.grant_types,
+        "response_types": client.response_types,
+        "token_endpoint_auth_method": client.token_endpoint_auth_method,
+        "application_type": "web",
+        "token_endpoint_auth_signing_alg": "HS256",
+        "client_name": client.client_name,
+        "client_uri": client.client_uri,
+        "logo_uri": client.logo_uri,
+        "scope": client.scope,
+        "contacts": client.contacts,
+        "tos_uri": client.tos_uri,
+        "policy_uri": client.policy_uri,
+        "jwks_uri": client.jwks_uri,
+        "jwks": client.jwks,
+        "software_id": client.software_id,
+        "software_version": client.software_version,
     }
 
 

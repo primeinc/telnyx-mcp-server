@@ -15,9 +15,7 @@ from telnyx_mcp_server.tools.secrets import (
 def mock_service():
     """Create a mock SecretsService."""
     service = MagicMock()
-    service.list_integration_secrets.return_value = {
-        "data": [{"id": "test-id"}]
-    }
+    service.list_integration_secrets.return_value = {"data": [{"id": "test-id"}]}
     service.create_integration_secret.return_value = {"data": {"id": "new-id"}}
     service.delete_integration_secret.return_value = {}
     return service
@@ -68,7 +66,5 @@ async def test_delete_integration_secret(mock_get_service, mock_service):
     result = await delete_integration_secret(id="test-id")
 
     mock_get_service.assert_called_once()
-    mock_service.delete_integration_secret.assert_called_once_with(
-        id="test-id"
-    )
+    mock_service.delete_integration_secret.assert_called_once_with(id="test-id")
     assert result == {}

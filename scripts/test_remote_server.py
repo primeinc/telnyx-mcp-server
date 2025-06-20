@@ -31,16 +31,12 @@ async def test_server():
         # Update this list if new critical routes are added or existing ones are modified.
         required_endpoints = ["/", "/health", "/authorize", "/token", "/mcp"]
 
-        missing_endpoints = [
-            ep for ep in required_endpoints if ep not in routes
-        ]
+        missing_endpoints = [ep for ep in required_endpoints if ep not in routes]
         if missing_endpoints:
             print(f"❌ Error: Missing required endpoints: {missing_endpoints}")
             return False
 
-        print(
-            f"✅ All required endpoints configured ({len(routes)} total routes)"
-        )
+        print(f"✅ All required endpoints configured ({len(routes)} total routes)")
 
         # Import the MCP instance to verify it exists
         from telnyx_mcp_server.mcp import mcp  # noqa: F401
@@ -63,9 +59,7 @@ async def test_server():
             if num_tools > 0:
                 print(f"✅ Successfully loaded {num_tools} tools")
             else:
-                print(
-                    "⚠️  Warning: No tools loaded, but server can still start"
-                )
+                print("⚠️  Warning: No tools loaded, but server can still start")
 
         except ImportError as e:
             print(f"⚠️  Warning: Could not import tools: {e}")

@@ -105,12 +105,8 @@ class TestPIIRedactorProcessor:
         assert result["user_data"]["email"] == "[REDACTED]"
         assert result["user_data"]["credentials"]["password"] == "[REDACTED]"
         assert result["user_data"]["credentials"]["api_key"] == "[REDACTED]"
-        assert (
-            result["api_calls"][1]["headers"]["authorization"] == "[REDACTED]"
-        )
-        assert (
-            result["user_data"]["name"] == "John Doe"
-        )  # Non-sensitive data preserved
+        assert result["api_calls"][1]["headers"]["authorization"] == "[REDACTED]"
+        assert result["user_data"]["name"] == "John Doe"  # Non-sensitive data preserved
 
     def test_redact_phone_numbers(self, redactor):
         """Test redaction of phone number patterns."""
@@ -300,7 +296,7 @@ class TestConfigureStructlog:
             "telnyx_mcp_server.remote.structured_logging.STRUCTLOG_AVAILABLE",
             True,
         ):
-            logger = get_logger("test.logger")
+            get_logger("test.logger")
 
             # Should call structlog.get_logger
             structlog_mock.get_logger.assert_called_with("test.logger")
@@ -312,7 +308,7 @@ class TestConfigureStructlog:
             False,
         ):
             with patch("logging.getLogger") as mock_get_logger:
-                logger = get_logger("test.logger")
+                get_logger("test.logger")
 
                 # Should fall back to standard logging
                 mock_get_logger.assert_called_with("test.logger")

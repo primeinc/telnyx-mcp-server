@@ -47,10 +47,7 @@ class TestAssistantsService:
 
         # Verify the request data
         sent_request = kwargs["data"]
-        assert (
-            sent_request["voice_settings"]["voice"]
-            == "Telnyx.KokoroTTS.af_heart"
-        )
+        assert sent_request["voice_settings"]["voice"] == "Telnyx.KokoroTTS.af_heart"
         assert sent_request["voice_settings"]["api_key_ref"] is None
         assert sent_request["enabled_features"] == ["telephony"]
 

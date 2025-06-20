@@ -31,9 +31,7 @@ async def test_deployed_server():
         print(f"   Status: {response.status_code}")
         if response.status_code == 200:
             metadata = response.json()
-            print(
-                f"   Authorization: {metadata.get('authorization_endpoint')}"
-            )
+            print(f"   Authorization: {metadata.get('authorization_endpoint')}")
             print(f"   Token: {metadata.get('token_endpoint')}")
             print(f"   Registration: {metadata.get('registration_endpoint')}")
 
