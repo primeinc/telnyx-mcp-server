@@ -199,6 +199,60 @@ def get_managed_identity() -> AzureManagedIdentity:
     return _default_identity
 
 
+async def create_jwt_assertion(
+    managed_identity_client_id: str, client_id: str, audience: str
+) -> str:
+    """Create a JWT assertion for private_key_jwt client authentication using managed identity.
+
+    This creates a JWT that Azure AD will accept as client authentication when using
+    Federated Identity Credentials. The JWT is signed by the managed identity.
+
+    Args:
+        managed_identity_client_id: The client ID of the managed identity
+        client_id: The client ID of the app registration
+        audience: The token endpoint URL
+
+    Returns:
+        A JWT assertion that can be used for client authentication
+
+    Raises:
+        Exception: If unable to create the assertion
+    """
+
+    # Create managed identity instance with the specific client ID
+    identity = AzureManagedIdentity(client_id=managed_identity_client_id)
+
+    # Get a token from the managed identity
+    # The scope should be for the app registration itself
+    scope = f"api://{client_id}/.default"
+
+    try:
+        # First, try to get a token with the app's scope
+        token = await identity.get_token(scope)
+    except Exception as e:
+        logger.warning(
+            f"Failed to get token with app scope {scope}, trying Azure AD token exchange: {e}"
+        )
+        # If that fails, try the Azure AD token exchange endpoint
+        scope = "api://AzureADTokenExchange"
+        token = await identity.get_token(scope)
+
+    if not token:
+        raise Exception("Failed to get managed identity token")
+
+    # The token we got from managed identity IS our client assertion
+    # Azure AD with FIC will validate this token and accept it as proof of identity
+    logger.info(
+        "Successfully obtained JWT assertion from managed identity",
+        managed_identity_client_id=managed_identity_client_id,
+        client_id=client_id,
+        audience=audience,
+        scope_used=scope,
+    )
+
+    return token
+
+
 async def get_managed_identity_assertion(audience: str) -> str:
     """Get a client assertion JWT using managed identity for FIC authentication.
 
@@ -215,22 +269,47 @@ async def get_managed_identity_assertion(audience: str) -> str:
     Raises:
         Exception: If unable to get the assertion
     """
-    # Get the managed identity instance
-    identity = get_managed_identity()
-
-    # Get a token for the audience
-    # For FIC, we need to get a token with the app's client ID as the audience
-    client_id = os.getenv("AZURE_CLIENT_ID")
-    if not client_id:
-        raise ValueError("AZURE_CLIENT_ID environment variable not set")
-
-    # The scope for getting an assertion is the app's client ID
-    scope = f"api://AzureADTokenExchange"
-
-    token = await identity.get_token(scope)
-    if not token:
-        raise Exception(
-            "Failed to get managed identity token for client assertion"
+    # Get the managed identity instance using the client ID from the override
+    override_client_id = os.getenv("OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID")
+    if not override_client_id:
+        raise ValueError(
+            "OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID environment variable not set"
         )
 
-    return token
+    # Create managed identity instance with the specific client ID
+    identity = AzureManagedIdentity(client_id=override_client_id)
+
+    # For client assertion, we need a token with the app registration's client ID as the audience
+    app_client_id = os.getenv("AZURE_CLIENT_ID")
+    if not app_client_id:
+        raise ValueError("AZURE_CLIENT_ID environment variable not set")
+
+    # The audience for the assertion should be the app's client ID URI
+    # This is what the FIC is configured to trust
+    assertion_audience = f"api://{app_client_id}"
+
+    try:
+        # Get a token from the managed identity with the app as the audience
+        token = await identity.get_token(assertion_audience)
+        if not token:
+            raise Exception(
+                f"Failed to get managed identity token for audience {assertion_audience}"
+            )
+
+        logger.info(
+            "Successfully obtained managed identity assertion",
+            managed_identity_client_id=override_client_id,
+            app_client_id=app_client_id,
+            assertion_audience=assertion_audience,
+        )
+
+        return token
+    except Exception as e:
+        logger.error(
+            f"Failed to get managed identity assertion: {e}",
+            managed_identity_client_id=override_client_id,
+            app_client_id=app_client_id,
+            assertion_audience=assertion_audience,
+            error=str(e),
+        )
+        raise

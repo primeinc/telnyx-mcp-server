@@ -198,13 +198,13 @@ module web './app/web.bicep' = {
       MCP_ALLOWED_ORIGINS: 'https://app.claude.ai,https://claude.ai,https://chat.anthropic.com,http://localhost:6274'
 
       // Azure App Service Configuration
-      SCM_DO_BUILD_DURING_DEPLOYMENT: 'true'
-      ENABLE_ORYX_BUILD: 'true'
+      SCM_DO_BUILD_DURING_DEPLOYMENT: 'false'
+      ENABLE_ORYX_BUILD: 'false'
       PYTHON_VERSION: '3.11'
       PYTHON_ENABLE_GUNICORN_MULTIWORKERS: 'true'
       GUNICORN_CMD_ARGS: environment == 'prod' ? '--log-level warning' : '--log-level debug'
       WEBSITES_PORT: '8000'
-      WEBSITE_RUN_FROM_PACKAGE: '0'  // Normal deployment with extraction
+      WEBSITE_RUN_FROM_PACKAGE: '1'  // Run from package for better performance
       Oryx_EnablePythonNixAlias: 'true'  // Create python -> python3 symlink
       ORYX_BUILD_VERBOSE: 'true'  // Enable verbose Oryx build logging
       SCM_TRACE_LEVEL: 'Verbose'  // Enable verbose SCM logging

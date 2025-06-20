@@ -1022,6 +1022,10 @@ if config.is_app_service:
             # Convert from parse_qs format (lists) to simple dict
             form_dict = {k: v[0] if v else "" for k, v in form_data.items()}
 
+            # Ensure client_id is set
+            if not form_dict.get("client_id"):
+                form_dict["client_id"] = config.client_id
+
             logger.info(
                 "Token request received",
                 grant_type=form_dict.get("grant_type"),
@@ -1040,51 +1044,54 @@ if config.is_app_service:
                 },
             )
 
-        # Check if we need to use managed identity with FIC
-        use_mi_fic = (
-            os.getenv("OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID")
-            == config.client_id
+        # Check if we should use managed identity with FIC for authentication
+        override_client_id = os.getenv(
+            "OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID"
         )
-
-        if use_mi_fic:
-            # Use managed identity to get a client assertion
-            from .auth.azure.managed_identity import (
-                get_managed_identity_assertion,
-            )
+        if override_client_id:
+            # Use managed identity to create a JWT assertion for private_key_jwt authentication
+            from .auth.azure.managed_identity import create_jwt_assertion
 
             try:
-                # Get client assertion from managed identity
-                client_assertion = await get_managed_identity_assertion(
-                    audience=f"https://login.microsoftonline.com/{config.tenant_id}/oauth2/v2.0/token"
+                logger.info(
+                    "Using managed identity for private_key_jwt authentication",
+                    managed_identity_client_id=override_client_id,
+                    app_client_id=config.client_id,
                 )
 
-                # Add client assertion to the form data
+                # Create JWT assertion
+                jwt_assertion = await create_jwt_assertion(
+                    managed_identity_client_id=override_client_id,
+                    client_id=config.client_id,
+                    audience=f"https://login.microsoftonline.com/{config.tenant_id}/oauth2/v2.0/token",
+                )
+
+                # Add JWT assertion to the form data
                 form_dict["client_assertion_type"] = (
                     "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
                 )
-                form_dict["client_assertion"] = client_assertion
-                form_dict["client_id"] = config.client_id
+                form_dict["client_assertion"] = jwt_assertion
 
-                # Remove code_verifier if present (not needed with client assertion)
+                # Remove code_verifier if present when using client assertion
                 if "code_verifier" in form_dict:
                     del form_dict["code_verifier"]
 
-                # Reconstruct the body with client assertion
-                body = urlencode(form_dict).encode("utf-8")
-
-                logger.info(
-                    "Using managed identity client assertion for token request"
-                )
+                logger.info("Added JWT assertion to token request")
 
             except Exception as e:
-                logger.error(f"Failed to get managed identity assertion: {e}")
+                logger.error(
+                    f"Failed to create JWT assertion: {e}", exc_info=True
+                )
                 return JSONResponse(
                     status_code=500,
                     content={
                         "error": "server_error",
-                        "error_description": "Failed to get client assertion",
+                        "error_description": f"Failed to create client assertion: {str(e)}",
                     },
                 )
+
+        # Reconstruct body with all parameters
+        body = urlencode(form_dict).encode("utf-8")
 
         # Construct Azure AD token URL
         tenant_id = config.tenant_id or "common"
