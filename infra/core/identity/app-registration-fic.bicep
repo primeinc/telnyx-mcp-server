@@ -60,6 +60,7 @@ resource clientApp 'Microsoft.Graph/applications@v1.0' = {
       '${webAppEndpoint}/.auth/login/aad/callback'
       'http://localhost:8000/auth/callback'
       '${webAppEndpoint}/auth/callback'
+      'https://claude.ai/api/mcp/auth_callback'
     ]
     implicitGrantSettings: { enableIdTokenIssuance: true }
   }
