@@ -797,9 +797,13 @@ async def oauth_metadata(request: Request):
     return metadata
 
 
-@app.get("/.well-known/mcp-oauth-metadata")
-async def mcp_oauth_metadata(request: Request):
-    """MCP OAuth 2.0 Metadata endpoint for Claude."""
+@app.get("/.well-known/oauth-authorization-server")
+async def oauth_authorization_server(request: Request):
+    """OAuth 2.0 Authorization Server Metadata endpoint (RFC 8414).
+
+    This is the standard OAuth discovery endpoint that clients should use
+    when following the Link header from a 401 response.
+    """
     # Get base URL from request, handling proxy headers
     forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()
     forwarded_host = request.headers.get(
@@ -848,6 +852,12 @@ async def mcp_oauth_metadata(request: Request):
         }
 
     return metadata
+
+
+@app.get("/.well-known/mcp-oauth-metadata")
+async def mcp_oauth_metadata(request: Request):
+    """MCP OAuth 2.0 Metadata endpoint for Claude - alias for standard endpoint."""
+    return await oauth_authorization_server(request)
 
 
 @app.get("/.well-known/openid-configuration")
@@ -932,13 +942,6 @@ async def mcp_metadata(request: Request):
             "logging": True,
         },
     }
-
-
-@app.get("/.well-known/mcp-oauth-metadata")
-async def mcp_oauth_metadata(request: Request):
-    """MCP OAuth Metadata endpoint - alias for mcp-metadata."""
-    # Just redirect to the mcp-metadata endpoint
-    return await mcp_metadata(request)
 
 
 @app.get("/.well-known/oauth-protected-resource")
@@ -1724,14 +1727,22 @@ async def mcp_endpoint(
     # Get base URL first
     base_url = get_base_url_from_request(request)
 
+    # LOG EVERYTHING - FULL REQUEST DETAILS
+    logger.debug(
+        "MCP POST /mcp REQUEST RECEIVED",
+        url=str(request.url),
+        method=request.method,
+        client=str(request.client),
+        headers=dict(request.headers),
+    )
+
     # Parse the request body first to check method
     message = None
     current_user = None
     try:
         body = await request.body()
-        logger.debug(
-            f"Request body: {body.decode('utf-8') if body else 'None'}"
-        )
+        body_str = body.decode("utf-8") if body else "None"
+        logger.debug("REQUEST BODY", body=body_str)
         message = json.loads(body)
 
         # Determine if this request requires authentication
@@ -1773,8 +1784,14 @@ async def mcp_endpoint(
                     "Access-Control-Expose-Headers": "WWW-Authenticate, Link",  # For CORS
                 }
 
-                # DEBUG: Log the exact WWW-Authenticate header being sent
-                logger.info(f"🔍 SENDING WWW-Authenticate: {auth_header}")
+                # LOG FULL 401 RESPONSE
+                logger.debug(
+                    "SENDING 401 UNAUTHORIZED RESPONSE",
+                    method=method,
+                    response_headers=headers,
+                    response_body="(empty)",
+                    status_code=401,
+                )
 
                 return Response(
                     content="",  # Empty body - critical for MCP clients
@@ -1855,6 +1872,12 @@ async def mcp_endpoint(
         # Notification - return 202 Accepted with no body
         return Response(status_code=202)
 
+    # LOG THE RESPONSE WE'RE ABOUT TO SEND
+    logger.debug(
+        "MCP RESPONSE TO BE SENT",
+        response_data=response if response else "None (202 already sent)",
+    )
+
     # Check if this contains only responses (no requests)
     is_batch = isinstance(response, list)
     contains_requests = False
@@ -1909,6 +1932,15 @@ async def mcp_sse_stream(
     ),
 ):
     """GET endpoint for server-initiated SSE stream."""
+    # LOG EVERYTHING - FULL REQUEST DETAILS
+    logger.debug(
+        "MCP GET /mcp REQUEST RECEIVED",
+        url=str(request.url),
+        method=request.method,
+        client=str(request.client),
+        headers=dict(request.headers),
+    )
+
     # Check authentication first, before any logging that uses current_user
     current_user = None
     try:
@@ -1935,9 +1967,12 @@ async def mcp_sse_stream(
                 "Access-Control-Expose-Headers": "WWW-Authenticate, Link",  # For CORS
             }
 
-            # DEBUG: Log the exact WWW-Authenticate header being sent
-            logger.info(
-                f"🔍 SENDING WWW-Authenticate (GET /mcp): {auth_header}"
+            # LOG FULL 401 RESPONSE
+            logger.debug(
+                "SENDING 401 UNAUTHORIZED RESPONSE (GET /mcp)",
+                response_headers=headers,
+                response_body="(empty)",
+                status_code=401,
             )
 
             return Response(
