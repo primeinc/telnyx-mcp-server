@@ -4,6 +4,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Virtual environment for Azure deployment
+src/antenv/
+
 # C extensions
 *.so
 

@@ -1,4 +1,4 @@
-name: Deploy to Azure
+name: Deploy to Azure (v1.1)
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - main
       - staging
       - develop
-      - feature/remote-mcp-server
+      - 'feature/**'
   pull_request:
     branches:
       - main
@@ -14,41 +14,38 @@ on:
 
 env:
   PYTHON_VERSION: '3.11'
+  CACHE_VERSION: 'v2025-06'  # Bump this to invalidate cache when needed
 
 permissions:
   contents: read
   id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   determine-environment:
     runs-on: ubuntu-latest
     outputs:
       environment: ${{ steps.set-env.outputs.environment }}
-      log-level: ${{ steps.set-env.outputs.log-level }}
-      pii-redaction: ${{ steps.set-env.outputs.pii-redaction }}
     steps:
       - id: set-env
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "environment=production" >> $GITHUB_OUTPUT
-            echo "log-level=WARNING" >> $GITHUB_OUTPUT
-            echo "pii-redaction=true" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
             echo "environment=staging" >> $GITHUB_OUTPUT
-            echo "log-level=DEBUG" >> $GITHUB_OUTPUT
-            echo "pii-redaction=false" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
             echo "environment=development" >> $GITHUB_OUTPUT
-            echo "log-level=DEBUG" >> $GITHUB_OUTPUT
-            echo "pii-redaction=false" >> $GITHUB_OUTPUT
           else
             echo "environment=development" >> $GITHUB_OUTPUT
-            echo "log-level=DEBUG" >> $GITHUB_OUTPUT
-            echo "pii-redaction=false" >> $GITHUB_OUTPUT
           fi
 
   build:
     runs-on: ubuntu-latest
+    outputs:
+      artifact-name: ${{ steps.artifact-name.outputs.name }}
 
     steps:
     - uses: actions/checkout@v4
@@ -58,31 +55,69 @@ jobs:
       with:
         python-version: ${{ env.PYTHON_VERSION }}
 
+    - name: Cache uv dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/uv
+        key: uv-${{ env.CACHE_VERSION }}-${{ hashFiles('src/uv.lock', 'src/pyproject.toml') }}
+        restore-keys: |
+          uv-${{ env.CACHE_VERSION }}-
+
     - name: Install uv
       uses: astral-sh/setup-uv@v4
-      with:
-        enable-cache: true
-        cache-dependency-glob: "src/uv.lock"
 
-    - name: Generate requirements.txt for Azure deployment
+    - name: Create optimized deployment package with venv
       run: |
-        cd src && uv pip compile pyproject.toml -o requirements.txt
-        echo "Generated requirements.txt for Azure App Service deployment"
-        # Verify the requirements.txt was created properly
-        if [ ! -f requirements.txt ]; then
-          echo "Error: requirements.txt was not generated"
-          exit 1
-        fi
-        echo "Requirements.txt size: $(wc -l < requirements.txt) lines"
+        echo "Starting build process at $(date)"
+        START_TIME=$(date +%s)
 
-    - name: Upload artifact for deployment
-      uses: actions/upload-artifact@v4
+        # Generate requirements.txt
+        echo "Step 1: Generating requirements.txt..."
+        STEP_START=$(date +%s)
+        cd src && uv pip compile pyproject.toml -o requirements.txt
+        STEP_END=$(date +%s)
+        echo "Generated requirements.txt with $(wc -l < requirements.txt) lines (took $((STEP_END - STEP_START))s)"
+
+        # Create virtual environment named antenv
+        echo "Step 2: Creating virtual environment..."
+        STEP_START=$(date +%s)
+        python -m venv antenv
+        STEP_END=$(date +%s)
+        echo "Virtual environment created (took $((STEP_END - STEP_START))s)"
+
+        # Activate virtual environment and install dependencies
+        echo "Step 3: Installing dependencies..."
+        STEP_START=$(date +%s)
+        source antenv/bin/activate
+        pip install -r requirements.txt --verbose
+        STEP_END=$(date +%s)
+        echo "Dependencies installed (took $((STEP_END - STEP_START))s)"
+
+        # Create deployment package including the venv
+        echo "Step 4: Creating deployment package..."
+        STEP_START=$(date +%s)
+        zip -r ../deployment-package.zip . antenv/ -x "*.pyc" "__pycache__/*" ".pytest_cache/*" ".ruff_cache/*" "antenv/__pycache__/*"
+        STEP_END=$(date +%s)
+
+        cd ..
+        TOTAL_TIME=$(($(date +%s) - START_TIME))
+        echo "Build completed in ${TOTAL_TIME}s"
+        echo "Package size: $(du -h deployment-package.zip | cut -f1)"
+        echo "Package contents preview:"
+        unzip -l deployment-package.zip | head -20
+
+    - name: Generate artifact name
+      id: artifact-name
+      run: echo "name=telnyx-mcp-${{ github.sha }}" >> $GITHUB_OUTPUT
+
+    - name: Upload deployment artifact
+      uses: actions/upload-artifact@v5
       with:
-        name: python-app
-        path: |
-          src/
-          azure.yaml
-          infra/
+        name: ${{ steps.artifact-name.outputs.name }}
+        path: deployment-package.zip
+        retention-days: 14
+        if-no-files-found: error
+        compression-level: 6
 
   deploy:
     runs-on: ubuntu-latest
@@ -90,47 +125,34 @@ jobs:
     environment:
       name: ${{ needs.determine-environment.outputs.environment }}
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+    env:
+      ENVIRONMENT: ${{ needs.determine-environment.outputs.environment }}
 
     steps:
-    - name: Download artifact from build job
-      uses: actions/download-artifact@v4
+    - name: Download deployment artifact
+      uses: actions/download-artifact@v5
       with:
-        name: python-app
+        name: ${{ needs.build.outputs.artifact-name }}
         path: .
 
     - name: Login to Azure
-      uses: azure/login@v2
+      uses: azure/login@v3
       with:
         client-id: ${{ secrets.AZURE_DEPLOY_CLIENT_ID }}
-        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        tenant-id: ${{ vars.AZURE_TENANT_ID }}
+        subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
     - name: Get deployed web app name
       id: get-webapp-name
       run: |
-        # Get the resource group name based on environment
-        RG_NAME="rg-telnyxmcp-${{ needs.determine-environment.outputs.environment }}-001"
-
-        # Get the web app name from the resource group
-        WEBAPP_NAME=$(az webapp list --resource-group "$RG_NAME" -o json | jq -r '.[] | select(.tags."azd-service-name"=="web") | .name')
-
-        if [ -z "$WEBAPP_NAME" ]; then
-          echo "Error: No web app found in resource group $RG_NAME"
-          exit 1
-        fi
+        # Use the webapp name directly from environment variables
+        WEBAPP_NAME="${{ vars.AZURE_WEBAPP_NAME }}"
+        echo "Using webapp name: $WEBAPP_NAME"
 
         echo "WEBAPP_NAME=$WEBAPP_NAME" >> $GITHUB_OUTPUT
-        echo "Found web app: $WEBAPP_NAME"
-
-    - name: Deploy to Azure Web App
-      id: deploy-to-webapp
-      uses: azure/webapps-deploy@v3
-      with:
-        app-name: ${{ steps.get-webapp-name.outputs.WEBAPP_NAME }}
-        package: ./src
 
     - name: Configure App Settings
-      uses: azure/appservice-settings@v1
+      uses: azure/appservice-settings@v2
       with:
         app-name: ${{ steps.get-webapp-name.outputs.WEBAPP_NAME }}
         app-settings-json: |
@@ -138,27 +160,49 @@ jobs:
             {"name": "TELNYX_API_KEY", "value": "${{ secrets.TELNYX_API_KEY }}"},
             {"name": "JWT_SECRET_KEY", "value": "${{ secrets.JWT_SECRET_KEY }}"},
             {"name": "AZURE_CLIENT_ID", "value": "${{ secrets.AZURE_OAUTH_CLIENT_ID }}"},
-            {"name": "AZURE_TENANT_ID", "value": "${{ secrets.AZURE_TENANT_ID }}"},
-            {"name": "AZURE_REDIRECT_URI", "value": "https://${{ steps.get-webapp-name.outputs.WEBAPP_NAME }}.azurewebsites.net/auth/callback"},
-            {"name": "ENVIRONMENT", "value": "${{ needs.determine-environment.outputs.environment }}"},
-            {"name": "LOG_LEVEL", "value": "${{ needs.determine-environment.outputs.log-level }}"},
-            {"name": "ENABLE_PII_REDACTION", "value": "${{ needs.determine-environment.outputs.pii-redaction }}"},
-            {"name": "MCP_ALLOWED_ORIGINS", "value": "https://app.claude.ai,https://claude.ai,https://chat.anthropic.com"},
+            {"name": "AZURE_TENANT_ID", "value": "${{ vars.AZURE_TENANT_ID }}"},
+            {"name": "AZURE_REDIRECT_URI", "value": "https://${{ vars.AZURE_WEBAPP_NAME }}.azurewebsites.net/auth/callback"},
+            {"name": "ENVIRONMENT", "value": "${{ vars.ENVIRONMENT }}"},
+            {"name": "LOG_LEVEL", "value": "${{ vars.LOG_LEVEL }}"},
+            {"name": "ENABLE_PII_REDACTION", "value": "${{ vars.ENABLE_PII_REDACTION }}"},
+            {"name": "MCP_ALLOWED_ORIGINS", "value": "${{ vars.MCP_ALLOWED_ORIGINS }}"},
             {"name": "REDIS_URL", "value": "${{ secrets.REDIS_URL }}"},
-            {"name": "USE_REDIS", "value": "true"},
+            {"name": "USE_REDIS", "value": "${{ vars.USE_REDIS }}"},
             {"name": "APPLICATION_INSIGHTS_KEY", "value": "${{ secrets.APPLICATION_INSIGHTS_KEY }}"},
             {"name": "GIT_COMMIT_HASH", "value": "${{ github.sha }}"},
-            {"name": "WEBSITE_RUN_FROM_PACKAGE", "value": "0"},
+            {"name": "WEBSITE_RUN_FROM_PACKAGE", "value": "1"},
+            {"name": "AZURE_WEBAPP_WARMUP_PATH", "value": "/health"},
             {"name": "WEBSITES_CONTAINER_START_TIME_LIMIT", "value": "1800"},
             {"name": "WEBSITES_ENABLE_APP_SERVICE_STORAGE", "value": "false"},
-            {"name": "WEBSITE_WEBDEPLOY_USE_SCM", "value": "true"},
-            {"name": "SCM_DO_BUILD_DURING_DEPLOYMENT", "value": "true"},
-            {"name": "ENABLE_ORYX_BUILD", "value": "true"}
+            {"name": "WEBSITE_WEBDEPLOY_USE_SCM", "value": "false"},
+            {"name": "SCM_DO_BUILD_DURING_DEPLOYMENT", "value": "false"},
+            {"name": "ENABLE_ORYX_BUILD", "value": "false"}
           ]
         general-settings-json: |
           {
             "linuxFxVersion": "PYTHON|3.11"
           }
+
+    - name: Pre-deployment logging
+      run: |
+        echo "Starting Azure deployment at $(date)"
+        echo "App name: ${{ steps.get-webapp-name.outputs.WEBAPP_NAME }}"
+        echo "Package: deployment-package.zip ($(du -h deployment-package.zip | cut -f1))"
+        echo "Git commit: ${{ github.sha }}"
+        echo "App settings configured - no restart will occur during deployment"
+
+    - name: Deploy to Azure Web App
+      id: deploy-to-webapp
+      uses: azure/webapps-deploy@v4
+      with:
+        app-name: ${{ steps.get-webapp-name.outputs.WEBAPP_NAME }}
+        package: deployment-package.zip
+        clean: true
+
+    - name: Post-deployment logging
+      run: |
+        echo "Azure deployment completed at $(date)"
+        echo "Deployed URL: ${{ steps.deploy-to-webapp.outputs.webapp-url }}"
 
     - name: Create deployment logs directory
       run: |
@@ -173,50 +217,101 @@ jobs:
         echo "Workflow run: ${{ github.run_id }}" >> .github/actions/deploy-logs/deploy-${{ github.sha }}.log
 
     - name: Upload deployment logs
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: deployment-logs-${{ github.sha }}
         path: .github/actions/deploy-logs/
-        retention-days: 30
+        retention-days: 14
 
-    - name: Wait for deployment to be ready
+    - name: Wait for deployment to be ready with retries
       run: |
         echo "Waiting for deployment to be ready..."
         WEBAPP_URL="${{ steps.deploy-to-webapp.outputs.webapp-url }}"
         MAX_ATTEMPTS=30
         SLEEP_TIME=10
+        READINESS_START=$(date +%s)
 
         for i in $(seq 1 $MAX_ATTEMPTS); do
-          echo "Attempt $i/$MAX_ATTEMPTS..."
-          if curl -s -o /dev/null -w "%{http_code}" "${WEBAPP_URL}/health" | grep -q "200"; then
-            echo "Application is ready!"
+          echo "Readiness check attempt $i/$MAX_ATTEMPTS at $(date)..."
+
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${WEBAPP_URL}/health" || echo "000")
+          echo "Health endpoint returned: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            READINESS_TIME=$(($(date +%s) - READINESS_START))
+            echo "Application ready! (took ${READINESS_TIME}s)"
             break
           fi
 
           if [ $i -eq $MAX_ATTEMPTS ]; then
-            echo "Application failed to become ready after $((MAX_ATTEMPTS * SLEEP_TIME)) seconds"
+            echo "ERROR: Application failed to become ready after $((MAX_ATTEMPTS * SLEEP_TIME)) seconds"
+            echo "Final HTTP status: $HTTP_CODE"
+            echo "Attempting to get error details:"
+            curl -v "${WEBAPP_URL}/health" || true
             exit 1
           fi
 
-          echo "Application not ready yet, waiting ${SLEEP_TIME}s..."
+          echo "Application not ready yet (HTTP $HTTP_CODE), waiting ${SLEEP_TIME}s..."
           sleep $SLEEP_TIME
         done
 
-    - name: Test deployed application
+    - name: Test deployed application with retries
       run: |
         echo "Testing deployed application at ${{ steps.deploy-to-webapp.outputs.webapp-url }}"
         WEBAPP_URL="${{ steps.deploy-to-webapp.outputs.webapp-url }}"
+        EXPECTED_COMMIT="${{ github.sha }}"
+        MAX_RETRIES=6
 
-        # Test health endpoint
-        echo "Testing health endpoint..."
-        curl -f "${WEBAPP_URL}/health" | jq . || (echo "Health check failed"; exit 1)
+        # Function to test endpoint with retries
+        test_endpoint() {
+          local endpoint=$1
+          local description=$2
+          local retries=0
 
-        # Test OAuth metadata
-        echo "Testing OAuth metadata endpoint..."
-        curl -f "${WEBAPP_URL}/.well-known/oauth-authorization-server" | jq . || (echo "OAuth metadata check failed"; exit 1)
+          while [ $retries -lt $MAX_RETRIES ]; do
+            echo "Testing $description (attempt $((retries + 1))/$MAX_RETRIES)..."
 
-        # Test MCP metadata
-        echo "Testing MCP metadata endpoint..."
-        curl -f "${WEBAPP_URL}/.well-known/mcp-oauth-metadata" | jq . || (echo "MCP metadata check failed"; exit 1)
+            if curl -f -s "${WEBAPP_URL}${endpoint}" | jq . > /tmp/response.json; then
+              echo "SUCCESS: $description endpoint working"
+              cat /tmp/response.json
+              return 0
+            else
+              retries=$((retries + 1))
+              if [ $retries -lt $MAX_RETRIES ]; then
+                echo "RETRY: $description failed, retrying in 10s..."
+                sleep 10
+              else
+                echo "ERROR: $description failed after $MAX_RETRIES attempts"
+                echo "Last response:"
+                curl -v "${WEBAPP_URL}${endpoint}" || true
+                return 1
+              fi
+            fi
+          done
+        }
+
+        # Test health endpoint and verify git commit
+        echo "Testing health endpoint and verifying git commit..."
+        if curl -f -s "${WEBAPP_URL}/health" > /tmp/health.json; then
+          echo "Health response:"
+          cat /tmp/health.json | jq .
+
+          # Check if git commit is present in health response
+          DEPLOYED_COMMIT=$(cat /tmp/health.json | jq -r '.git_commit // .commit // .version // empty' 2>/dev/null || echo "")
+          if [ -n "$DEPLOYED_COMMIT" ] && [ "$DEPLOYED_COMMIT" = "$EXPECTED_COMMIT" ]; then
+            echo "SUCCESS: Git commit verified - deployed: $DEPLOYED_COMMIT, expected: $EXPECTED_COMMIT"
+          else
+            echo "WARNING: Git commit mismatch or not found - deployed: '$DEPLOYED_COMMIT', expected: '$EXPECTED_COMMIT'"
+          fi
+        else
+          echo "ERROR: Health endpoint not responding"
+          exit 1
+        fi
+
+        # Test OAuth metadata endpoint
+        test_endpoint "/.well-known/oauth-authorization-server" "OAuth metadata" || exit 1
+
+        # Test MCP metadata endpoint
+        test_endpoint "/.well-known/mcp-oauth-metadata" "MCP metadata" || exit 1
 
         echo "All deployment tests passed successfully!"

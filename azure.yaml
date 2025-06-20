@@ -6,46 +6,19 @@ services:
     project: ./src
     language: py
     host: appservice
-    ignore:
-      - .git
-      - .github
-      - .venv
-      - .pytest_cache
-      - .ruff_cache
-      - tests
-      - scripts
-      - "*.log"
-      - "*.zip"
-      - .env
-      - .env.*
-      - examples
-      - __pycache__
-      - "*.pyc"
-      - .mypy_cache
-      - .coverage
-      - htmlcov
-      - .vscode
-      - .idea
-      - "*.swp"
-      - "*.swo"
-      - .DS_Store
-      - deployment_log.json
-      - logging.json
-      - webapp-logs.zip
-      - latest-logs.zip
     hooks:
       prepackage:
         windows:
           shell: pwsh
           run: |
             Write-Host "Current directory: $pwd"
-            Write-Host "Files in current directory:"
-            Get-ChildItem
+            Write-Host "Generating requirements.txt..."
             uv pip compile pyproject.toml -o requirements.txt
+            Write-Host "Generated requirements.txt"
         posix:
           shell: sh
           run: |
             echo "Current directory: $(pwd)"
-            echo "Files in current directory:"
-            ls -la
+            echo "Generating requirements.txt..."
             uv pip compile pyproject.toml -o requirements.txt
+            echo "Generated requirements.txt with $(wc -l < requirements.txt) lines"
