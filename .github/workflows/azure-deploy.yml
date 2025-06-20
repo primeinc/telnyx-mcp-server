@@ -301,21 +301,43 @@ jobs:
           done
         }
 
-        # Test health endpoint and verify git commit
+        # Test health endpoint and verify git commit with retries
         echo "Testing health endpoint and verifying git commit..."
-        if curl -f -s "${WEBAPP_URL}/health" > /tmp/health.json; then
-          echo "Health response:"
-          cat /tmp/health.json | jq .
+        EXPECTED_SHORT_COMMIT="${EXPECTED_COMMIT:0:7}"
+        COMMIT_VERIFIED=false
 
-          # Check if git commit is present in health response
-          DEPLOYED_COMMIT=$(cat /tmp/health.json | jq -r '.git_commit // .commit // .version // empty' 2>/dev/null || echo "")
-          if [ -n "$DEPLOYED_COMMIT" ] && [ "$DEPLOYED_COMMIT" = "$EXPECTED_COMMIT" ]; then
-            echo "SUCCESS: Git commit verified - deployed: $DEPLOYED_COMMIT, expected: $EXPECTED_COMMIT"
+        for attempt in $(seq 1 $MAX_RETRIES); do
+          echo "Git commit verification attempt $attempt/$MAX_RETRIES..."
+
+          if curl -f -s "${WEBAPP_URL}/health" > /tmp/health.json; then
+            echo "Health response:"
+            cat /tmp/health.json | jq .
+
+            # Check if git commit is present in health response
+            DEPLOYED_COMMIT=$(cat /tmp/health.json | jq -r '.git_commit // .commit // .version // empty' 2>/dev/null || echo "")
+
+            if [ -n "$DEPLOYED_COMMIT" ] && [ "$DEPLOYED_COMMIT" = "$EXPECTED_SHORT_COMMIT" ]; then
+              echo "SUCCESS: Git commit verified - deployed: $DEPLOYED_COMMIT, expected: $EXPECTED_SHORT_COMMIT (from $EXPECTED_COMMIT)"
+              COMMIT_VERIFIED=true
+              break
+            else
+              echo "RETRY: Git commit mismatch - deployed: '$DEPLOYED_COMMIT', expected: '$EXPECTED_SHORT_COMMIT'"
+              if [ $attempt -lt $MAX_RETRIES ]; then
+                echo "Waiting 10s before retry..."
+                sleep 10
+              fi
+            fi
           else
-            echo "WARNING: Git commit mismatch or not found - deployed: '$DEPLOYED_COMMIT', expected: '$EXPECTED_COMMIT'"
+            echo "RETRY: Health endpoint not responding"
+            if [ $attempt -lt $MAX_RETRIES ]; then
+              sleep 10
+            fi
           fi
-        else
-          echo "ERROR: Health endpoint not responding"
+        done
+
+        if [ "$COMMIT_VERIFIED" != "true" ]; then
+          echo "ERROR: Failed to verify git commit after $MAX_RETRIES attempts"
+          echo "This means the wrong code version may be deployed!"
           exit 1
         fi
 
