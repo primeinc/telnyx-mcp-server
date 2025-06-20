@@ -27,7 +27,7 @@ dependencies = [
     "fakeredis>=2.0.0",
     "azure-keyvault-certificates>=4.7.0",
     "azure-keyvault-secrets>=4.7.0",
-    "cryptography>=41.0.0",
+    "cryptography==38.0.4",  # Pinned for Azure App Service GLIBC 2.31 compatibility
 ]
 
 [project.optional-dependencies]
