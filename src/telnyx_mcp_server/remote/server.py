@@ -1739,18 +1739,18 @@ async def mcp_endpoint(
                         detail="Authentication required",
                     )
             except HTTPException:
-                # According to MCP spec and RFC 6750, return proper OAuth challenge header
+                # According to RFC 6750, return proper OAuth challenge header
                 auth_header = (
-                    f"Bearer "
-                    f'authorization_uri="{base_url}/authorize", '
-                    f'token_uri="{base_url}/token", '
-                    f'registration_uri="{base_url}/register", '
-                    f'scope="openid profile email mcp:read mcp:write mcp:execute"'
+                    'Bearer realm="telnyx-mcp", '
+                    'error="invalid_token", '
+                    'error_description="Access token is missing or invalid", '
+                    'scope="openid profile email mcp:read mcp:write mcp:execute"'
                 )
                 headers = {
                     "WWW-Authenticate": auth_header,
+                    "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth2-authorization-server"',
                     "Cache-Control": "no-store",
-                    "Access-Control-Expose-Headers": "WWW-Authenticate",  # For CORS
+                    "Access-Control-Expose-Headers": "WWW-Authenticate, Link",  # For CORS
                 }
 
                 # DEBUG: Log the exact WWW-Authenticate header being sent
@@ -1903,16 +1903,16 @@ async def mcp_sse_stream(
             # Return 401 with proper OAuth challenge header
             base_url = get_base_url_from_request(request)
             auth_header = (
-                f"Bearer "
-                f'authorization_uri="{base_url}/authorize", '
-                f'token_uri="{base_url}/token", '
-                f'registration_uri="{base_url}/register", '
-                f'scope="openid profile email mcp:read mcp:write mcp:execute"'
+                'Bearer realm="telnyx-mcp", '
+                'error="invalid_token", '
+                'error_description="Access token is missing or invalid", '
+                'scope="openid profile email mcp:read mcp:write mcp:execute"'
             )
             headers = {
                 "WWW-Authenticate": auth_header,
+                "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth2-authorization-server"',
                 "Cache-Control": "no-store",
-                "Access-Control-Expose-Headers": "WWW-Authenticate",  # For CORS
+                "Access-Control-Expose-Headers": "WWW-Authenticate, Link",  # For CORS
             }
 
             # DEBUG: Log the exact WWW-Authenticate header being sent
@@ -1929,16 +1929,16 @@ async def mcp_sse_stream(
         # Any auth error should result in proper OAuth challenge
         base_url = get_base_url_from_request(request)
         auth_header = (
-            f"Bearer "
-            f'authorization_uri="{base_url}/authorize", '
-            f'token_uri="{base_url}/token", '
-            f'registration_uri="{base_url}/register", '
-            f'scope="openid profile email mcp:read mcp:write mcp:execute"'
+            'Bearer realm="telnyx-mcp", '
+            'error="invalid_token", '
+            'error_description="Access token is missing or invalid", '
+            'scope="openid profile email mcp:read mcp:write mcp:execute"'
         )
         headers = {
             "WWW-Authenticate": auth_header,
+            "Link": f'<{base_url}/.well-known/oauth-authorization-server>; rel="oauth2-authorization-server"',
             "Cache-Control": "no-store",
-            "Access-Control-Expose-Headers": "WWW-Authenticate",  # For CORS
+            "Access-Control-Expose-Headers": "WWW-Authenticate, Link",  # For CORS
         }
 
         # DEBUG: Log the exact WWW-Authenticate header being sent

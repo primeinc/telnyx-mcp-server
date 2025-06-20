@@ -195,7 +195,7 @@ module web './app/web.bicep' = {
       USE_REDIS: useRedis ? 'true' : 'false'
 
       // CORS and Security
-      MCP_ALLOWED_ORIGINS: 'https://claude.ai,https://chat.anthropic.com'
+      MCP_ALLOWED_ORIGINS: 'https://app.claude.ai,https://claude.ai,https://chat.anthropic.com'
 
       // Azure App Service Configuration
       SCM_DO_BUILD_DURING_DEPLOYMENT: 'true'

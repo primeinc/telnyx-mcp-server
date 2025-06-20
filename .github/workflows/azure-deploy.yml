@@ -143,7 +143,7 @@ jobs:
             {"name": "ENVIRONMENT", "value": "${{ needs.determine-environment.outputs.environment }}"},
             {"name": "LOG_LEVEL", "value": "${{ needs.determine-environment.outputs.log-level }}"},
             {"name": "ENABLE_PII_REDACTION", "value": "${{ needs.determine-environment.outputs.pii-redaction }}"},
-            {"name": "MCP_ALLOWED_ORIGINS", "value": "https://claude.ai,https://chat.anthropic.com"},
+            {"name": "MCP_ALLOWED_ORIGINS", "value": "https://app.claude.ai,https://claude.ai,https://chat.anthropic.com"},
             {"name": "REDIS_URL", "value": "${{ secrets.REDIS_URL }}"},
             {"name": "USE_REDIS", "value": "true"},
             {"name": "APPLICATION_INSIGHTS_KEY", "value": "${{ secrets.APPLICATION_INSIGHTS_KEY }}"},
