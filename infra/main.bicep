@@ -171,7 +171,7 @@ module web './app/web.bicep' = {
 
       // OAuth Configuration
       // Note: With Built-in Auth and FIC, the App Service doesn't need client secrets
-      AZURE_CLIENT_ID: existingOauthAppClientId  // This must be provided or OAuth app created separately
+      AZURE_CLIENT_ID: createOAuthApp ? oauthAppFIC.outputs.clientAppId : existingOauthAppClientId
       AZURE_TENANT_ID: tenant().tenantId
       AZURE_REDIRECT_URI: 'https://${abbrs.webSitesAppService}${workloadName}-${environment}-${locationShortName}-001.azurewebsites.net/auth/callback'
       // AZURE_CLIENT_SECRET is intentionally not set - we use managed identity with FIC
