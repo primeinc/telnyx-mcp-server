@@ -130,13 +130,13 @@ jobs:
 
     steps:
     - name: Download deployment artifact
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v4
       with:
         name: ${{ needs.build.outputs.artifact-name }}
         path: .
 
     - name: Login to Azure
-      uses: azure/login@v3
+      uses: azure/login@v2
       with:
         client-id: ${{ secrets.AZURE_DEPLOY_CLIENT_ID }}
         tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -152,7 +152,7 @@ jobs:
         echo "WEBAPP_NAME=$WEBAPP_NAME" >> $GITHUB_OUTPUT
 
     - name: Configure App Settings
-      uses: azure/appservice-settings@v2
+      uses: azure/appservice-settings@v1
       with:
         app-name: ${{ steps.get-webapp-name.outputs.WEBAPP_NAME }}
         app-settings-json: |
@@ -193,7 +193,7 @@ jobs:
 
     - name: Deploy to Azure Web App
       id: deploy-to-webapp
-      uses: azure/webapps-deploy@v4
+      uses: azure/webapps-deploy@v3
       with:
         app-name: ${{ steps.get-webapp-name.outputs.WEBAPP_NAME }}
         package: deployment-package.zip
