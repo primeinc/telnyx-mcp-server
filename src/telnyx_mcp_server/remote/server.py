@@ -673,9 +673,8 @@ async def authorize_proxy(request: Request):
     if "scope" not in params:
         # Default scope that includes our app's client ID to get correct audience
         # This requests a token with our app as the audience, not Microsoft Graph
-        params["scope"] = (
-            f"api://{client_id}/default openid profile email offline_access"
-        )
+        # Only request our app's scope to ensure correct audience
+        params["scope"] = f"api://{client_id}/.default"
         logger.info(f"No scope provided, using default: {params['scope']}")
 
     # Build Azure AD authorization URL
@@ -1063,9 +1062,8 @@ if config.is_app_service:
         if "scope" not in params:
             # Default scope that includes our app's client ID to get correct audience
             # This requests a token with our app as the audience, not Microsoft Graph
-            params["scope"] = (
-                f"api://{config.client_id}/default openid profile email offline_access"
-            )
+            # Only request our app's scope to ensure correct audience
+            params["scope"] = f"api://{config.client_id}/.default"
             logger.info(f"No scope provided, using default: {params['scope']}")
 
         # Construct Azure AD authorization URL
