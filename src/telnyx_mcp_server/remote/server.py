@@ -669,6 +669,12 @@ async def authorize_proxy(request: Request):
     # Ensure our client_id is used
     params["client_id"] = client_id
 
+    # Ensure scope is present - Azure AD requires it
+    if "scope" not in params:
+        # Default scope for basic OpenID Connect flow
+        params["scope"] = "openid profile email offline_access"
+        logger.info(f"No scope provided, using default: {params['scope']}")
+
     # Build Azure AD authorization URL
     azure_auth_url = (
         f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize"
@@ -1049,6 +1055,12 @@ if config.is_app_service:
 
         # Ensure our client_id is used
         params["client_id"] = config.client_id
+
+        # Ensure scope is present - Azure AD requires it
+        if "scope" not in params:
+            # Default scope for basic OpenID Connect flow
+            params["scope"] = "openid profile email offline_access"
+            logger.info(f"No scope provided, using default: {params['scope']}")
 
         # Construct Azure AD authorization URL
         tenant_id = config.tenant_id or "common"
