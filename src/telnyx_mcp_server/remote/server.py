@@ -841,6 +841,9 @@ async def mcp_oauth_metadata(request: Request):
             "response_types_supported": ["code"],
             "code_challenge_methods_supported": ["S256"],
             "token_endpoint_auth_methods_supported": ["none"],
+            # Indicate that we use Bearer tokens for API access
+            "token_type": "Bearer",
+            "api_authentication_type": "bearer",
         }
     else:
         # Local OAuth configuration
@@ -861,6 +864,9 @@ async def mcp_oauth_metadata(request: Request):
             "response_types_supported": ["code"],
             "code_challenge_methods_supported": ["S256"],
             "token_endpoint_auth_methods_supported": ["none"],
+            # Indicate that we use Bearer tokens for API access
+            "token_type": "Bearer",
+            "api_authentication_type": "bearer",
         }
 
 
@@ -1568,9 +1574,8 @@ async def mcp_metadata():
         "server_version": __version__,
         "capabilities": {"tools": True, "resources": True, "logging": True},
         "auth_required": True,
-        "auth_type": "oauth2"
-        if not config.is_app_service
-        else "azure_easy_auth",
+        # Always indicate oauth2 support since we now support Bearer tokens
+        "auth_type": "oauth2",
     }
 
 
